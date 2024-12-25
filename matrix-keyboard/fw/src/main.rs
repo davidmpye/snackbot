@@ -6,30 +6,39 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Pull};
+
+use embassy_rp::i2c::{self, Config, InterruptHandler};
+use embassy_rp::peripherals::I2C0;
+
 use embassy_rp::peripherals::USB;
-use embassy_rp::usb::{Driver, InterruptHandler};
+use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
 use embassy_usb::class::hid::{HidWriter, HidReader, HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
-use embassy_usb::{Builder, Config, Handler, UsbDevice};
+use embassy_usb::{Builder, Config as UsbConfig, Handler, UsbDevice};
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use {defmt_rtt as _, panic_probe as _};
 use embassy_rp::gpio::{Level, Output};
 use static_cell::StaticCell;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Delay, Duration, Timer};
+use embassy_rp::peripherals::{PIN_16, PIN_17};
+use lcd_lcm1602_i2c::sync_lcd::Lcd;
+
 
 bind_interrupts!(struct Irqs {
-    USBCTRL_IRQ => InterruptHandler<USB>;
+    USBCTRL_IRQ => UsbInterruptHandler<USB>;
+    I2C0_IRQ => InterruptHandler<I2C0>;
 });
+
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let p = embassy_rp::init(Default::default());   
+    let p = embassy_rp::init(Default::default());  
 
     // Create the driver, from the HAL.
-    let driver = Driver::new(p.USB, Irqs);
+    let driver = UsbDriver::new(p.USB, Irqs);
 
     // Create embassy-usb Config
-    let mut config = Config::new(0xdead, 0xbeef);
+    let mut config = UsbConfig::new(0xdead, 0xbeef);
     config.manufacturer = Some("SnackBot");
     config.product = Some("VendMatrixKeyboard");
     config.serial_number = Some("12345678");
@@ -66,10 +75,10 @@ async fn main(spawner: Spawner) {
         poll_ms: 60,
         max_packet_size: 64,
     };
-    let hid: HidReaderWriter<'_, Driver<'_, USB>, 1, 8> = HidReaderWriter::<_, 1, 8>::new(&mut builder, state, config);
+    let hid: HidReaderWriter<'_, UsbDriver<'_, USB>, 1, 8> = HidReaderWriter::<_, 1, 8>::new(&mut builder, state, config);
 
     // Build the builder - USB device will be run by usb_task
-    let usb: UsbDevice<'_, Driver<'_, USB>> = builder.build();
+    let usb: UsbDevice<'_, UsbDriver<'_, USB>> = builder.build();
 
     //Description for the matrix keyboard and how the row/columns map to GPIOs
     let col_pins = [ Output::new(p.PIN_19, Level::Low), Output::new(p.PIN_20, Level::Low), Output::new(p.PIN_21, Level::Low) ] ;
@@ -80,15 +89,17 @@ async fn main(spawner: Spawner) {
 
     let led_pin = Output::new(p.PIN_25, Level::Low);
 
-
     let (reader, writer) = hid.split();
 
     unwrap!(spawner.spawn(usb_task(usb)));
     unwrap!(spawner.spawn(reader_task(reader, request_handler)));
     unwrap!(spawner.spawn(writer_task(writer, col_pins, row_pins, led_pin)));
+    unwrap!(spawner.spawn(i2c_task(p.I2C0, p.PIN_17, p.PIN_16)));
+
+
 }
 
-type MyUsbDriver = Driver<'static, USB>;
+type MyUsbDriver = UsbDriver<'static, USB>;
 type MyUsbDevice = UsbDevice<'static, MyUsbDriver>;
 type MyHidWriter = HidWriter<'static, MyUsbDriver, 8>;
 type MyHidReader = HidReader<'static, MyUsbDriver, 1>;
@@ -101,6 +112,38 @@ async fn usb_task(mut usb: MyUsbDevice) -> ! {
 #[embassy_executor::task]
 async fn reader_task(reader: MyHidReader, mut request_handler: MyRequestHandler)  -> ! {
     reader.run(false, &mut request_handler).await;
+}
+
+#[embassy_executor::task]
+async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16)  -> ! {
+    //Initialise the I2C0 peripheral on GPIO16(SDA) and GPIO17(SCL)
+    let mut i2c = i2c::I2c::new_async(interface, scl, sda, Irqs, Config::default());
+    let mut delay = Delay;
+    let message = "SNACKBOT(C) Powered by Rust";
+
+    //Try to find the LCD
+    if let Ok(mut lcd) = Lcd::new(&mut i2c, &mut delay)
+    .with_address(0x27)
+    .with_cursor_on(false) // no visible cursor
+    .with_rows(2) // two rows
+    .init() {
+        info!("Found I2C LCD at address 0x27");
+        let _ = lcd.backlight(lcd_lcm1602_i2c::Backlight::On);
+        let _ = lcd.clear();
+        let _ = lcd.write_str(message);
+
+        loop {
+            let _ = lcd.scroll_display_left();
+            Timer::after(Duration::from_millis(500)).await;
+        }
+    }
+    else {
+        warn!("Unable to locate I2C LCD at address 0x27");
+    }
+    loop {
+        //Must be a better way to end this task?
+        Timer::after(Duration::from_millis(5000)).await;
+    }
 }
 
 #[embassy_executor::task]
@@ -137,7 +180,6 @@ async fn writer_task(mut writer: MyHidWriter, mut col_pins: [Output<'static>;3],
 
     }
 }
-
 
 fn get_pressed_keys(col_pins:&mut [Output;3], row_pins: &mut[Input;8], keypad_matrix:[[u8;7];3]) -> [u8;6] {
     let mut pressed_keys = [0x00u8;6];
