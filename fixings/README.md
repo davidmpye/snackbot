@@ -8,7 +8,7 @@ These files are as follows:
   - Laser cut this in 3mm clear acrylic to provide a window for the Pi/Hyperpixel combo to sit behind.
 
 * hyperpixel_mount.scad
- - 3D printed bracket to mount the Pi (via the Hyperpixel screen PCB) into place behind the above mentioned window.
+  - 3D printed bracket to mount the Pi (via the Hyperpixel screen PCB) into place behind the above mentioned window.
 
 * hyperpixel_retaining_tabs.scad
   - 3D printed retaining tabs to hold the Pi into place in the mount.
