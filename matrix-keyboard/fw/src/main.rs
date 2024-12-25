@@ -69,19 +69,19 @@ async fn main(spawner: Spawner) {
     let hid: HidReaderWriter<'_, Driver<'_, USB>, 1, 8> = HidReaderWriter::<_, 1, 8>::new(&mut builder, state, config);
 
     // Build the builder - USB device will be run by usb_task
-    let mut usb: UsbDevice<'_, Driver<'_, USB>> = builder.build();
+    let usb: UsbDevice<'_, Driver<'_, USB>> = builder.build();
 
     //Description for the matrix keyboard and how the row/columns map to GPIOs
-    let mut col_pins = [ Output::new(p.PIN_19, Level::Low), Output::new(p.PIN_20, Level::Low), Output::new(p.PIN_21, Level::Low) ] ;
+    let col_pins = [ Output::new(p.PIN_19, Level::Low), Output::new(p.PIN_20, Level::Low), Output::new(p.PIN_21, Level::Low) ] ;
     let row_pins =  [ 
         Input::new(p.PIN_0, Pull::Down),  Input::new(p.PIN_1, Pull::Down),Input::new(p.PIN_2, Pull::Down),Input::new(p.PIN_3, Pull::Down),
         Input::new(p.PIN_4, Pull::Down),  Input::new(p.PIN_5, Pull::Down),Input::new(p.PIN_6, Pull::Down),Input::new(p.PIN_7, Pull::Down),
     ];
 
-    let mut led_pin = Output::new(p.PIN_25, Level::Low);
+    let led_pin = Output::new(p.PIN_25, Level::Low);
 
 
-    let (reader, mut writer) = hid.split();
+    let (reader, writer) = hid.split();
 
     unwrap!(spawner.spawn(usb_task(usb)));
     unwrap!(spawner.spawn(reader_task(reader, request_handler)));
