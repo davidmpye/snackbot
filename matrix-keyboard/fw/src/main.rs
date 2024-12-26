@@ -115,7 +115,7 @@ async fn reader_task(reader: MyHidReader, mut request_handler: MyRequestHandler)
 }
 
 #[embassy_executor::task]
-async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16)  -> {
+async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
     //Initialise the I2C0 peripheral on GPIO16(SDA) and GPIO17(SCL)
     let mut i2c = i2c::I2c::new_async(interface, scl, sda, Irqs, Config::default());
     let mut delay = Delay;
