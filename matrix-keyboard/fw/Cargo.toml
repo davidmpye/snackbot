@@ -51,6 +51,7 @@ pio-proc = "0.2"
 pio = "0.2.1"
 rand = { version = "0.8.5", default-features = false }
 embedded-sdmmc = "0.7.0"
+lcd-lcm1602-i2c = "0.3.0"
 
 [profile.release]
 debug = 2
