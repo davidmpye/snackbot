@@ -3,25 +3,25 @@
 
 use core::sync::atomic::{AtomicBool, Ordering};
 use defmt::*;
+
 use embassy_executor::Spawner;
-use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Input, Pull};
-
-use embassy_rp::i2c::{self, Config, InterruptHandler};
-use embassy_rp::peripherals::I2C0;
-
-use embassy_rp::peripherals::USB;
-use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
 use embassy_usb::class::hid::{HidWriter, HidReader, HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::{Builder, Config as UsbConfig, Handler, UsbDevice};
-use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
-use {defmt_rtt as _, panic_probe as _};
-use embassy_rp::gpio::{Level, Output};
-use static_cell::StaticCell;
 use embassy_time::{Delay, Duration, Timer};
-use embassy_rp::peripherals::{PIN_16, PIN_17};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+
+use embassy_rp::bind_interrupts;
+use embassy_rp::i2c::{self, Config, InterruptHandler};
+use embassy_rp::usb;
+use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
+use embassy_rp::gpio::{Input, Output, Pull, Level};
+use embassy_rp::peripherals::{USB, I2C0, PIN_16, PIN_17};
+
+use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
+
 use lcd_lcm1602_i2c::sync_lcd::Lcd;
+use static_cell::{ConstStaticCell, StaticCell};
 
 use postcard_rpc::{
     define_dispatch,
@@ -37,10 +37,31 @@ use postcard_rpc::{
     },
 };
 
+use {defmt_rtt as _, panic_probe as _};
+
+type AppDriver = usb::Driver<'static, USB>;
+type BufStorage = PacketBuffers<1024, 1024>;
+static PBUFS: ConstStaticCell<BufStorage> = ConstStaticCell::new(BufStorage::new());
+static STORAGE: AppStorage = AppStorage::new();
+type AppStorage = WireStorage<ThreadModeRawMutex, AppDriver, 256, 256, 64, 256>;
+
+
+const KEYPAD_MATRIX: [[u8; 7]; 3]= [ 
+    [ 0x22u8, 0x23u8, 0x24u8, 0x25u8, 0x26u8, 0x28u8, 0x29u8],  //5->9, enter, escape
+    [ 0x27u8, 0x1eu8, 0x1fu8, 0x20u8, 0x21u8, 0x52u8, 0x51u8],  //0->4, up arrow, down arrow
+    [ 0x04u8, 0x05u8, 0x06u8, 0x07u8, 0x08u8, 0x09u8, 0x0Au8],  //A->G
+];
+
+
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
     I2C0_IRQ => InterruptHandler<I2C0>;
 });
+
+pub struct Context {
+       pub line1_text: [u8;32],
+       pub line2_text: [u8;32],
+}
 
 
 #[embassy_executor::main]
@@ -81,6 +102,16 @@ async fn main(spawner: Spawner) {
 
     builder.handler(device_handler);
 
+    let pbufs = PBUFS.take();
+    let context = Context {
+        line1_text:  [0x00;32],
+        line2_text:  [0x00;32],
+    };
+
+    //let (device, tx_impl, rx_impl) = STORAGE.init(driver2, config, pbufs.tx_buf.as_mut_slice());
+    // let dispatcher = MyApp::new(context, spawner.into());
+    //let vkk = dispatcher.min_key_len();
+
     // Create classes on the builder.
     let config = embassy_usb::class::hid::Config {
         report_descriptor: KeyboardReport::desc(),
@@ -101,7 +132,6 @@ async fn main(spawner: Spawner) {
     ];
 
     let led_pin = Output::new(p.PIN_25, Level::Low);
-
     let (reader, writer) = hid.split();
 
     unwrap!(spawner.spawn(usb_task(usb)));
@@ -136,22 +166,22 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
     //Try to find the LCD
     if let Ok(mut lcd) = Lcd::new(&mut i2c, &mut delay)
     .with_address(0x27)
-    .with_cursor_on(false) // no visible cursor
-    .with_rows(2) // two rows
+    .with_cursor_on(false)
+    .with_rows(2)
     .init() {
         info!("Found I2C LCD at address 0x27");
         let _ = lcd.backlight(lcd_lcm1602_i2c::Backlight::On);
-        lcd.clear();
+        let _ = lcd.clear();
         //Write top line            
-        lcd.set_cursor(0,0);
-        lcd.write_str(line1);
+        let _ = lcd.set_cursor(0,0);
+        let _ = lcd.write_str(line1);
         loop {
             for i in 0..line2.len() {
                 //Write scrolling message on second row
-                lcd.set_cursor(1,0);
-                lcd.write_str("                ");
-                lcd.set_cursor(1,0);
-                lcd.write_str(&line2[i..line2.len()]);
+                let _ = lcd.set_cursor(1,0);
+                let _ = lcd.write_str("                ");
+                let _ = lcd.set_cursor(1,0);
+                let _ = lcd.write_str(&line2[i..line2.len()]);
                 Timer::after(Duration::from_millis(500)).await;
             }
         }
@@ -163,20 +193,13 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
 
 #[embassy_executor::task]
 async fn writer_task(mut writer: MyHidWriter, mut col_pins: [Output<'static>;3], mut row_pins: [Input<'static>;8], mut led_pin: Output<'static>) -> ! {
-    //This needs to match the same grid as the row_pins/col_pins above, or badness.
-    let keypad_matrix = [ 
-        [ 0x22u8, 0x23u8, 0x24u8, 0x25u8, 0x26u8, 0x28u8, 0x29u8],  //5->9, enter, escape
-        [ 0x27u8, 0x1eu8, 0x1fu8, 0x20u8, 0x21u8, 0x52u8, 0x51u8],  //0->4, up arrow, down arrow
-        [ 0x04u8, 0x05u8, 0x06u8, 0x07u8, 0x08u8, 0x09u8, 0x0Au8],  //A->G
-    ];
-
     loop {
-        let pressed_keys =  get_pressed_keys(&mut col_pins, &mut row_pins, keypad_matrix);
-
+        let pressed_keys =  get_pressed_keys(&mut col_pins, &mut row_pins);
         if pressed_keys != [0x00u8;6] {
             //flash led
             led_pin.set_high();
         }
+
         let report = KeyboardReport {
             keycodes: pressed_keys,
             leds: 0,
@@ -187,19 +210,18 @@ async fn writer_task(mut writer: MyHidWriter, mut col_pins: [Output<'static>;3],
         // Send the report.
         match writer.write_serialize(&report).await {
            Ok(()) => {}
-          Err(e) => warn!("Failed to send report: {:?}", e),
+           Err(e) => warn!("Failed to send report: {:?}", e),
         }; 
         Timer::after(Duration::from_millis(5)).await;
         
         led_pin.set_low();
-
     }
 }
 
-fn get_pressed_keys(col_pins:&mut [Output;3], row_pins: &mut[Input;8], keypad_matrix:[[u8;7];3]) -> [u8;6] {
+fn get_pressed_keys(col_pins:&mut [Output;3], row_pins: &mut[Input;8]) -> [u8;6] {
     let mut pressed_keys = [0x00u8;6];
     let mut pressed_key_count = 0;
-    for (col_pin, keypad_col) in core::iter::zip(col_pins.iter_mut(), keypad_matrix) {
+    for (col_pin, keypad_col) in core::iter::zip(col_pins.iter_mut(), KEYPAD_MATRIX) {
         //For each column of the matrix keypad, set the column pin high, then scan the row pins to see 
         //which buttons are pressed
         col_pin.set_high();
