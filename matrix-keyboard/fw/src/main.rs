@@ -23,7 +23,19 @@ use embassy_time::{Delay, Duration, Timer};
 use embassy_rp::peripherals::{PIN_16, PIN_17};
 use lcd_lcm1602_i2c::sync_lcd::Lcd;
 
-//use core::iter::Iterator;
+use postcard_rpc::{
+    define_dispatch,
+    header::VarHeader,
+    server::{
+        impls::embassy_usb_v0_3::{
+            dispatch_impl::{
+                spawn_fn, WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl,
+            },
+            PacketBuffers,
+        },
+        Dispatch, Sender, Server, SpawnContext,
+    },
+};
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
@@ -129,14 +141,15 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
     .init() {
         info!("Found I2C LCD at address 0x27");
         let _ = lcd.backlight(lcd_lcm1602_i2c::Backlight::On);
-
+        lcd.clear();
+        //Write top line            
+        lcd.set_cursor(0,0);
+        lcd.write_str(line1);
         loop {
             for i in 0..line2.len() {
-                lcd.clear();
-                //Write top line            
-                lcd.set_cursor(0,0);
-                lcd.write_str(line1);
-                //Write scrolling message
+                //Write scrolling message on second row
+                lcd.set_cursor(1,0);
+                lcd.write_str("                ");
                 lcd.set_cursor(1,0);
                 lcd.write_str(&line2[i..line2.len()]);
                 Timer::after(Duration::from_millis(500)).await;
