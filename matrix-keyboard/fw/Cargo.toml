@@ -1,11 +1,15 @@
 [package]
 edition = "2021"
-name = "matrix-keyboard"
+name = "embassy-rp-examples"
 version = "0.1.0"
-license = "GPL-3.0-or-later"
-authors = [ "David Pye <davidmpye@gmail.com>" ]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
+embassy-executor        = { version = "0.6.0", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread", "executor-interrupt", "defmt", "integrated-timers"] }
+embassy-rp              = { version = "0.2.0", features = [ "defmt", "unstable-pac", "time-driver", "critical-section-impl"] }
+embassy-sync            = { version = "0.6.0", features = ["defmt"] }
+embassy-time            = { version = "0.3.2", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-usb             = { version = "0.3.0", features = ["defmt"] }
 
 defmt = "0.3"
 defmt-rtt = "0.4"
@@ -17,7 +21,8 @@ cortex-m = { version = "0.7.6", features = ["inline-asm"] }
 cortex-m-rt = "0.7.0"
 critical-section = "1.1"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-
+byte-slice-cast = { version = "1.2.0", default-features = false }
+usbd-hid = "0.8.1"
 rand_core = "0.6.4"
 
 embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
@@ -29,17 +34,12 @@ embedded-storage = { version = "0.3" }
 static_cell = "2.1"
 portable-atomic = { version = "1.5", features = ["critical-section"] }
 log = "0.4"
-
+pio-proc = "0.2"
+pio = "0.2.1"
 rand = { version = "0.8.5", default-features = false }
+embedded-sdmmc = "0.7.0"
 lcd-lcm1602-i2c = "0.3.0"
-embassy-embedded-hal = "0.2.0"
-embassy-sync = "0.6.1"
-embassy-time = "0.3.2"
-embassy-executor = "0.6.3"
-embassy-futures = "0.1.1"
-embassy-rp = "0.2.0"
-embassy-usb = "0.3.0"
-embassy-usb-logger = "0.2.0"
+postcard-rpc = { version = "0.11.3", features = ["embassy-usb-0_3-server"] }
 
 [profile.release]
 debug = 2
@@ -50,3 +50,4 @@ opt-level = 'z'
 debug = 2
 lto = true
 opt-level = "z"
+
