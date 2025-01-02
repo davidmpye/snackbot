@@ -23,7 +23,6 @@ use embassy_time::{Delay, Duration, Timer};
 use embassy_rp::peripherals::{PIN_16, PIN_17};
 use lcd_lcm1602_i2c::sync_lcd::Lcd;
 
-
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
     I2C0_IRQ => InterruptHandler<I2C0>;
@@ -179,20 +178,21 @@ async fn writer_task(mut writer: MyHidWriter, mut col_pins: [Output<'static>;3],
 
 fn get_pressed_keys(col_pins:&mut [Output;3], row_pins: &mut[Input;8], keypad_matrix:[[u8;7];3]) -> [u8;6] {
     let mut pressed_keys = [0x00u8;6];
-    let mut num_pressed_keys = 0;
-
-    for (col_num, col_pin) in col_pins.iter_mut().enumerate() {
+    let mut pressed_key_count = 0;
+    for (col_pin, keypad_col) in core::iter::zip(col_pins.iter_mut(), keypad_matrix) {
+        //For each column of the matrix keypad, set the column pin high, then scan the row pins to see 
+        //which buttons are pressed
         col_pin.set_high();
-        for (row_num, row_pin) in row_pins.iter_mut().enumerate()  {
+        for (row_pin, keypad_val) in core::iter::zip(row_pins.iter(), keypad_col) {
             if row_pin.is_high() {
-                if num_pressed_keys == 5 {
+                if pressed_key_count == 6 {
                     //If we already have 6 keys pressed, we cannot accept another keypress
                     //Return an array of KEY_ERR_OVF to indicate this to the OS
                     warn!("Too many keys pressed");
                     return [0x01;6];
                 }
-                pressed_keys[num_pressed_keys] = keypad_matrix[col_num][row_num];
-                num_pressed_keys+=1;
+                pressed_keys[pressed_key_count] = keypad_val;
+                pressed_key_count+=1;
             }
         }
         col_pin.set_low();
