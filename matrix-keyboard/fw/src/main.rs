@@ -23,6 +23,8 @@ use embassy_time::{Delay, Duration, Timer};
 use embassy_rp::peripherals::{PIN_16, PIN_17};
 use lcd_lcm1602_i2c::sync_lcd::Lcd;
 
+//use core::iter::Iterator;
+
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
     I2C0_IRQ => InterruptHandler<I2C0>;
@@ -94,8 +96,6 @@ async fn main(spawner: Spawner) {
     unwrap!(spawner.spawn(reader_task(reader, request_handler)));
     unwrap!(spawner.spawn(writer_task(writer, col_pins, row_pins, led_pin)));
     unwrap!(spawner.spawn(i2c_task(p.I2C0, p.PIN_17, p.PIN_16)));
-
-
 }
 
 type MyUsbDriver = UsbDriver<'static, USB>;
@@ -118,7 +118,8 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
     //Initialise the I2C0 peripheral on GPIO16(SDA) and GPIO17(SCL)
     let mut i2c = i2c::I2c::new_async(interface, scl, sda, Irqs, Config::default());
     let mut delay = Delay;
-    let message = "SNACKBOT(C) Powered by Rust";
+    let line1 = "  SnackBot (C)";
+    let line2 = "Powered by Makerspace";
 
     //Try to find the LCD
     if let Ok(mut lcd) = Lcd::new(&mut i2c, &mut delay)
@@ -128,12 +129,18 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
     .init() {
         info!("Found I2C LCD at address 0x27");
         let _ = lcd.backlight(lcd_lcm1602_i2c::Backlight::On);
-        let _ = lcd.clear();
-        let _ = lcd.write_str(message);
 
         loop {
-            let _ = lcd.scroll_display_left();
-            Timer::after(Duration::from_millis(500)).await;
+            for i in 0..line2.len() {
+                lcd.clear();
+                //Write top line            
+                lcd.set_cursor(0,0);
+                lcd.write_str(line1);
+                //Write scrolling message
+                lcd.set_cursor(1,0);
+                lcd.write_str(&line2[i..line2.len()]);
+                Timer::after(Duration::from_millis(500)).await;
+            }
         }
     }
     else {
@@ -145,9 +152,9 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
 async fn writer_task(mut writer: MyHidWriter, mut col_pins: [Output<'static>;3], mut row_pins: [Input<'static>;8], mut led_pin: Output<'static>) -> ! {
     //This needs to match the same grid as the row_pins/col_pins above, or badness.
     let keypad_matrix = [ 
-        [ 0x04u8, 0x05u8, 0x06u8, 0x07u8, 0x08u8, 0x09u8, 0x0Au8],  //A->G
-        [ 0x27u8, 0x1eu8, 0x1fu8, 0x20u8, 0x21u8, 0x52u8, 0x51u8],  //0->4, up arrow, down arrow
         [ 0x22u8, 0x23u8, 0x24u8, 0x25u8, 0x26u8, 0x28u8, 0x29u8],  //5->9, enter, escape
+        [ 0x27u8, 0x1eu8, 0x1fu8, 0x20u8, 0x21u8, 0x52u8, 0x51u8],  //0->4, up arrow, down arrow
+        [ 0x04u8, 0x05u8, 0x06u8, 0x07u8, 0x08u8, 0x09u8, 0x0Au8],  //A->G
     ];
 
     loop {
