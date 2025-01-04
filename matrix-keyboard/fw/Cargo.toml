@@ -40,7 +40,9 @@ rand = { version = "0.8.5", default-features = false }
 embedded-sdmmc = "0.7.0"
 lcd-lcm1602-i2c = "0.3.0"
 postcard-rpc = { version = "0.11.3", features = ["embassy-usb-0_3-server"] }
-
+postcard = "1.1.1"
+postcard-schema = "0.2.0"
+keyboard-icd = {version = "0.1.0", path="../keyboard-icd" }
 [profile.release]
 debug = 2
 lto = true
