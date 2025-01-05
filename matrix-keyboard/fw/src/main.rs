@@ -26,8 +26,10 @@ use lcd_lcm1602_i2c::sync_lcd::Lcd;
 use static_cell::{ConstStaticCell, StaticCell};
 
 use embassy_sync::signal::Signal;
-
-static LINE_2: Signal<ThreadModeRawMutex, [u8; 64]> = Signal::new();
+//NB if we use second core, this mutex is not suitable
+static LINE_1_TEXT: Signal<ThreadModeRawMutex, [u8; 32]> = Signal::new();
+static LINE_2_TEXT: Signal<ThreadModeRawMutex, [u8; 32]> = Signal::new();
+static BACKLIGHT_SETTING: Signal<ThreadModeRawMutex, bool> = Signal::new();
 
 use postcard_rpc::{
     define_dispatch,
@@ -43,7 +45,9 @@ use postcard_rpc::{
     },
 };
 
-use keyboard_icd::{PingEndpoint, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST};
+use keyboard_icd::{
+    SetBacklight, SetLine1Text, SetLine2Text, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -57,9 +61,9 @@ type AppRx = WireRxImpl<AppDriver>;
 type AppServer = Server<AppTx, AppRx, WireRxBuf, MyApp>;
 
 const KEYPAD_MATRIX: [[u8; 7]; 3] = [
-    [0x22u8, 0x23u8, 0x24u8, 0x25u8, 0x26u8, 0x28u8, 0x29u8], //5->9, enter, escape
-    [0x27u8, 0x1eu8, 0x1fu8, 0x20u8, 0x21u8, 0x52u8, 0x51u8], //0->4, up arrow, down arrow
     [0x04u8, 0x05u8, 0x06u8, 0x07u8, 0x08u8, 0x09u8, 0x0Au8], //A->G
+    [0x27u8, 0x1eu8, 0x1fu8, 0x20u8, 0x21u8, 0x52u8, 0x51u8], //0->4, up arrow, down arrow
+    [0x22u8, 0x23u8, 0x24u8, 0x25u8, 0x26u8, 0x28u8, 0x29u8], //5->9, enter, escape
 ];
 
 bind_interrupts!(struct Irqs {
@@ -82,10 +86,12 @@ define_dispatch! {
 
     endpoints: {
         list: ENDPOINT_LIST;
+        | EndpointTy                | kind        | handler                     |
+        | ----------                | ----        | -------                     |
+        | SetBacklight              | blocking    | set_backlight               |
+        | SetLine1Text              | blocking    | set_line1_text              |
+        | SetLine2Text              | blocking    | set_line2_text              |
 
-        | EndpointTy                | kind      | handler                       |
-        | ----------                | ----      | -------                       |
-        | PingEndpoint              | blocking  | ping_handler                  |
     };
     topics_in: {
         list: TOPICS_IN_LIST;
@@ -159,9 +165,9 @@ async fn main(spawner: Spawner) {
 
     //Description for the matrix keyboard and how the row/columns map to GPIOs
     let col_pins = [
+        Output::new(p.PIN_21, Level::Low),
         Output::new(p.PIN_19, Level::Low),
         Output::new(p.PIN_20, Level::Low),
-        Output::new(p.PIN_21, Level::Low),
     ];
     let row_pins = [
         Input::new(p.PIN_0, Pull::Down),
@@ -203,12 +209,27 @@ async fn usb_task(mut usb: MyUsbDevice) -> ! {
 #[embassy_executor::task]
 async fn reader_task(reader: MyHidReader, mut request_handler: MyRequestHandler) -> ! {
     reader.run(false, &mut request_handler).await;
+
+}
+
+
+//These are handlers for the Postcard-RPC endpoints
+fn set_backlight(_context: &mut Context, _header: VarHeader, rqst: bool) {
+    BACKLIGHT_SETTING.signal(rqst);
+}
+
+fn set_line1_text(context: &mut Context, _header: VarHeader, rqst: [u8; 32]) {
+    LINE_1_TEXT.signal(rqst);
+}
+
+fn set_line2_text(context: &mut Context, _header: VarHeader, rqst: [u8; 32]) {
+    LINE_2_TEXT.signal(rqst);
 }
 
 #[embassy_executor::task]
 async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
     //Initialise the I2C0 peripheral on GPIO16(SDA) and GPIO17(SCL)
-    let mut i2c: i2c::I2c<'_, I2C0, i2c::Async> =
+    let mut i2c=
         i2c::I2c::new_async(interface, scl, sda, Irqs, Config::default());
     let mut delay = Delay;
 
@@ -223,17 +244,104 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
         let _ = lcd.backlight(lcd_lcm1602_i2c::Backlight::On);
         let _ = lcd.clear();
 
-        loop {
-            let line2: &str = "test message to scroll";
+        let mut line1_text = "    SnackBot";
+        let mut line2_text = "Initializing...";
 
-            for i in 0..line2.len() {
-                //Write scrolling message on second row
-                let _ = lcd.set_cursor(1, 0);
-                let _ = lcd.write_str("                ");
-                let _ = lcd.set_cursor(1, 0);
-                let _ = lcd.write_str(&line2[i..line2.len()]);
-                Timer::after(Duration::from_millis(500)).await;
+        let mut line1_buf = [0x00u8; 32];
+        let mut line2_buf = [0x00u8; 32];
+
+        //Whether the lines need to be written to screen
+        let mut changed_line1 = true;
+        let mut changed_line2 = true;
+
+        //Used to determine if line needs to be scrolled, and what position it is at
+        let mut line1_scrolling = false;
+        let mut line2_scrolling = false;
+        let mut line1_scroll_index: usize = 0;
+        let mut line2_scroll_index: usize = 0;
+
+        loop {
+            //if backlight setting has changed, apply it.
+            if let Some(res) = BACKLIGHT_SETTING.try_take() {
+                let _ = match res {
+                    true => lcd.backlight(lcd_lcm1602_i2c::Backlight::On),
+                    false => lcd.backlight(lcd_lcm1602_i2c::Backlight::Off),
+                };
             }
+
+            //New Line 1 text arrived
+            if let Some(line) = LINE_1_TEXT.try_take() {
+                line1_buf[..line.len()].copy_from_slice(&line);
+                line1_text = core::str::from_utf8(&line1_buf).unwrap().trim_end();
+                changed_line1 = true;
+                line1_scroll_index = 0;
+                //if line longer than 16 chars (display length), it'll need to scroll
+                line1_scrolling = line1_text.len() > 16;
+            }
+
+            //New Line 2 text arrived
+            if let Some(line) = LINE_2_TEXT.try_take() {
+                line2_buf[..line.len()].copy_from_slice(&line);
+                line2_text = core::str::from_utf8(&line2_buf).unwrap().trim_end();
+                changed_line2 = true;
+                line2_scroll_index = 0;
+                //as above
+                line2_scrolling = line2_text.len() > 16;
+            }
+
+            let line1_to_display = {
+                if line1_scrolling {
+                    let l = &line1_text[line1_scroll_index..];
+                    let msg_len = line1_text.len();
+                    line1_scroll_index = if line1_scroll_index == msg_len {
+                        0
+                    }
+                    else {
+                        line1_scroll_index+1
+                    };
+                    changed_line1 = true;
+                    l
+                } else {
+                    line1_text
+                }
+            };
+
+            let line2_to_display = {
+                if line2_scrolling {
+                    let l = &line2_text[line2_scroll_index..];
+                    let msg_len = line2_text.len();
+                    line2_scroll_index = if line2_scroll_index == msg_len {
+                        0
+                    }
+                    else {
+                        line2_scroll_index+1
+                    };
+                    changed_line2 = true;
+                    l
+                } else {
+                    line2_text
+                }
+            };
+
+            //Closure to update a single line
+            let mut line_update = |row:u8, msg:&str| {
+                let _ = lcd.set_cursor(row, 0);
+                let _ = lcd.write_str("                ");
+                let _ = lcd.set_cursor(row, 0);
+                let _ = lcd.write_str(msg);
+            };
+
+            if changed_line1 {
+                line_update(0, line1_to_display);
+                changed_line1 = false;
+            }
+
+            if changed_line2 {
+                line_update(1, line2_to_display);
+                changed_line2 = false;
+            }
+
+            Timer::after(Duration::from_millis(500)).await;
         }
     } else {
         warn!("Unable to locate I2C LCD at address 0x27");
@@ -267,7 +375,6 @@ async fn writer_task(
             Err(e) => warn!("Failed to send report: {:?}", e),
         };
         Timer::after(Duration::from_millis(5)).await;
-
         led_pin.set_low();
     }
 }
@@ -317,11 +424,6 @@ impl RequestHandler for MyRequestHandler {
         info!("Get idle rate for {:?}", id);
         None
     }
-}
-
-fn ping_handler(_context: &mut Context, _header: VarHeader, rqst: u32) -> u32 {
-    info!("ping");
-    loop {}
 }
 
 struct MyDeviceHandler {

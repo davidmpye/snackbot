@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 endpoints! {
     list = ENDPOINT_LIST;
     omit_std = true;
-    | EndpointTy                | RequestTy     | ResponseTy            | Path              |
-    | ----------                | ---------     | ----------            | ----              |
-    | PingEndpoint              | u32           | u32                   | "ping"            |
+    | EndpointTy              | RequestTy        | ResponseTy           | Path              |
+    | ----------              | ---------        | ----------           | ----              |
+    | SetBacklight            | bool             | ()                   | "setBacklight"    |
+    | SetLine1Text            | [u8;32]          | ()                   | "setLine1Text"    |
+    | SetLine2Text            | [u8;32]          | ()                   | "setLine2Text"    |
 }
 
 topics! {
