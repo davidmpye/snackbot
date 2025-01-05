@@ -5,8 +5,10 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use defmt::*;
 
 use embassy_executor::Spawner;
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+
+use embassy_sync::{signal::Signal, blocking_mutex::raw::ThreadModeRawMutex};
 use embassy_time::{Delay, Duration, Timer};
+
 use embassy_usb::class::hid::{
     HidReader, HidReaderWriter, HidWriter, ReportId, RequestHandler, State,
 };
@@ -14,7 +16,7 @@ use embassy_usb::control::OutResponse;
 use embassy_usb::{Config as UsbConfig, Handler, UsbDevice};
 
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Input, Level, Output, Pull};
+use embassy_rp::gpio::{AnyPin, Input, Level, Output, Pin, Pull};
 use embassy_rp::i2c::{self, Config, InterruptHandler};
 use embassy_rp::peripherals::{I2C0, PIN_16, PIN_17, USB};
 use embassy_rp::usb;
@@ -25,30 +27,27 @@ use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use lcd_lcm1602_i2c::sync_lcd::Lcd;
 use static_cell::{ConstStaticCell, StaticCell};
 
-use embassy_sync::signal::Signal;
 //NB if we use second core, this mutex is not suitable
 static LINE_1_TEXT: Signal<ThreadModeRawMutex, [u8; 32]> = Signal::new();
 static LINE_2_TEXT: Signal<ThreadModeRawMutex, [u8; 32]> = Signal::new();
 static BACKLIGHT_SETTING: Signal<ThreadModeRawMutex, bool> = Signal::new();
-static LCD_ROW_LENGTH:usize = 16;
-
+static LCD_ROW_LENGTH: usize = 16;
 
 use postcard_rpc::{
     define_dispatch,
     header::VarHeader,
     server::{
         impls::embassy_usb_v0_3::{
-            dispatch_impl::{
-                WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl,
-            },
+            dispatch_impl::{WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl},
             PacketBuffers,
         },
-        Dispatch, Server,
+        Dispatch, Sender, Server,
     },
 };
 
 use keyboard_icd::{
-    SetBacklight, SetLine1Text, SetLine2Text, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+    ServiceModeTopic, SetBacklight, SetLine1Text, SetLine2Text, 
+    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
 };
 
 use {defmt_rtt as _, panic_probe as _};
@@ -97,7 +96,6 @@ define_dispatch! {
     };
     topics_in: {
         list: TOPICS_IN_LIST;
-
         | TopicTy                   | kind      | handler                       |
         | ----------                | ----      | -------                       |
     };
@@ -114,10 +112,10 @@ async fn main(spawner: Spawner) {
     let driver = UsbDriver::new(p.USB, Irqs);
 
     // Create embassy-usb Config
-    let mut config = UsbConfig::new(0x16c0, 0x27DD);
+    let mut config = UsbConfig::new(0xDEAD, 0xBEEF);
 
-    config.manufacturer = Some("OneVariable");
-    config.product = Some("ov-twin");
+    config.manufacturer = Some("Snackbot");
+    config.product = Some("ov-twin"); //To be changed...
     config.serial_number = Some("12345678");
 
     config.device_class = 0xEF;
@@ -159,6 +157,7 @@ async fn main(spawner: Spawner) {
         poll_ms: 60,
         max_packet_size: 64,
     };
+
     let hid: HidReaderWriter<'_, UsbDriver<'_, USB>, 1, 8> =
         HidReaderWriter::<_, 1, 8>::new(&mut builder, state, config);
 
@@ -186,15 +185,36 @@ async fn main(spawner: Spawner) {
 
     let (reader, writer) = hid.split();
 
-    unwrap!(spawner.spawn(usb_task(usb)));
-    unwrap!(spawner.spawn(reader_task(reader, request_handler)));
-    unwrap!(spawner.spawn(writer_task(writer, col_pins, row_pins, led_pin)));
-    unwrap!(spawner.spawn(i2c_task(p.I2C0, p.PIN_17, p.PIN_16)));
+    //USB device handler task
+    spawner.must_spawn(usb_task(usb));
+    //USB HID reader task
+    spawner.must_spawn(reader_task(reader, request_handler));
+    //USB HID writer task
+    spawner.must_spawn(writer_task(writer, col_pins, row_pins, led_pin));
+    //I2C LCD driver task
+    spawner.must_spawn(i2c_task(p.I2C0, p.PIN_17, p.PIN_16));
+    //Service mode switch topic task
+    spawner.must_spawn(servicemode_switch_task(p.PIN_14.degrade(), server.sender()));
 
+    //Postcard server mainloop just runs here
     loop {
-        // If the host disconnects, we'll return an error here.
-        // If this happens, just wait until the host reconnects
         let _ = server.run().await;
+    }
+}
+
+#[embassy_executor::task]
+async fn servicemode_switch_task(service_mode_pin: AnyPin, sender: Sender<AppTx>) {
+    let mut async_input: Input<'_> = Input::new(service_mode_pin, Pull::None);
+    let mut msg_count = 0u8;
+    loop {
+        async_input.wait_for_low().await;
+        //Send signal service mode enabled
+        let _ = sender.publish::<ServiceModeTopic>(msg_count.into(), &true);
+        msg_count = msg_count.wrapping_add(1);
+        async_input.wait_for_high().await;
+        //Send signal service mode DISABLED
+        let _ = sender.publish::<ServiceModeTopic>(msg_count.into(), &false);
+        msg_count = msg_count.wrapping_add(1);
     }
 }
 
@@ -229,8 +249,7 @@ fn set_line2_text(_context: &mut Context, _header: VarHeader, rqst: [u8; 32]) {
 #[embassy_executor::task]
 async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
     //Initialise the I2C0 peripheral on GPIO16(SDA) and GPIO17(SCL)
-    let mut i2c=
-        i2c::I2c::new_async(interface, scl, sda, Irqs, Config::default());
+    let mut i2c = i2c::I2c::new_async(interface, scl, sda, Irqs, Config::default());
     let mut delay = Delay;
 
     //Try to find the LCD
@@ -274,8 +293,7 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
                 line1_buf[..line.len()].copy_from_slice(&line);
                 line1_text = if let Ok(text) = core::str::from_utf8(&line1_buf) {
                     text.trim_end()
-                }
-                else {
+                } else {
                     "Invalid ASCII"
                 };
                 changed_line1 = true;
@@ -289,8 +307,7 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
                 line2_buf[..line.len()].copy_from_slice(&line);
                 line2_text = if let Ok(text) = core::str::from_utf8(&line2_buf) {
                     text.trim_end()
-                }
-                else {
+                } else {
                     "Invalid ASCII"
                 };
                 changed_line2 = true;
@@ -305,9 +322,8 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
                     let msg_len = line1_text.len();
                     line1_scroll_index = if line1_scroll_index == msg_len {
                         0
-                    }
-                    else {
-                        line1_scroll_index+1
+                    } else {
+                        line1_scroll_index + 1
                     };
                     changed_line1 = true;
                     l
@@ -322,9 +338,8 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
                     let msg_len = line2_text.len();
                     line2_scroll_index = if line2_scroll_index == msg_len {
                         0
-                    }
-                    else {
-                        line2_scroll_index+1
+                    } else {
+                        line2_scroll_index + 1
                     };
                     changed_line2 = true;
                     l
@@ -334,7 +349,7 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
             };
 
             //Closure to update a single line
-            let mut line_update = |row:u8, msg:&str| {
+            let mut line_update = |row: u8, msg: &str| {
                 let _ = lcd.set_cursor(row, 0);
                 let _ = lcd.write_str("                ");
                 let _ = lcd.set_cursor(row, 0);

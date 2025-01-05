@@ -26,5 +26,6 @@ topics! {
     direction = TopicDirection::ToClient;
     | TopicTy                   | MessageTy     | Path              | Cfg                           |
     | -------                   | ---------     | ----              | ---                           |
+    | ServiceModeTopic          | bool          | "serviceMode"     |                               |
 }
 
