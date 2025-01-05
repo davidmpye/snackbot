@@ -115,7 +115,7 @@ async fn main(spawner: Spawner) {
     let mut config = UsbConfig::new(0xDEAD, 0xBEEF);
 
     config.manufacturer = Some("Snackbot");
-    config.product = Some("ov-twin"); //To be changed...
+    config.product = Some("matrix-keyboard"); //To
     config.serial_number = Some("12345678");
 
     config.device_class = 0xEF;
@@ -194,7 +194,7 @@ async fn main(spawner: Spawner) {
     //I2C LCD driver task
     spawner.must_spawn(i2c_task(p.I2C0, p.PIN_17, p.PIN_16));
     //Service mode switch topic task
-    spawner.must_spawn(servicemode_switch_task(p.PIN_14.degrade(), server.sender()));
+    spawner.must_spawn(servicemode_switch_task(p.PIN_22.degrade(), server.sender()));
 
     //Postcard server mainloop just runs here
     loop {
