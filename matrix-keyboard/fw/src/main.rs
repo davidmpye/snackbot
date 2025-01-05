@@ -30,6 +30,8 @@ use embassy_sync::signal::Signal;
 static LINE_1_TEXT: Signal<ThreadModeRawMutex, [u8; 32]> = Signal::new();
 static LINE_2_TEXT: Signal<ThreadModeRawMutex, [u8; 32]> = Signal::new();
 static BACKLIGHT_SETTING: Signal<ThreadModeRawMutex, bool> = Signal::new();
+static LCD_ROW_LENGTH:usize = 16;
+
 
 use postcard_rpc::{
     define_dispatch,
@@ -209,9 +211,7 @@ async fn usb_task(mut usb: MyUsbDevice) -> ! {
 #[embassy_executor::task]
 async fn reader_task(reader: MyHidReader, mut request_handler: MyRequestHandler) -> ! {
     reader.run(false, &mut request_handler).await;
-
 }
-
 
 //These are handlers for the Postcard-RPC endpoints
 fn set_backlight(_context: &mut Context, _header: VarHeader, rqst: bool) {
@@ -280,8 +280,8 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
                 };
                 changed_line1 = true;
                 line1_scroll_index = 0;
-                //if line longer than 16 chars (display length), it'll need to scroll
-                line1_scrolling = line1_text.len() > 16;
+                //if line longer than LCD_ROW_LENGTH chars, it'll need to scroll
+                line1_scrolling = line1_text.len() > LCD_ROW_LENGTH;
             }
 
             //New Line 2 text arrived
@@ -296,7 +296,7 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
                 changed_line2 = true;
                 line2_scroll_index = 0;
                 //as above
-                line2_scrolling = line2_text.len() > 16;
+                line2_scrolling = line2_text.len() > LCD_ROW_LENGTH;
             }
 
             let line1_to_display = {
