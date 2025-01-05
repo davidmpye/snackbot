@@ -8,3 +8,4 @@ This firmware appears as a USB HID Keyboard and the matrix keypad button presses
 
 The firmware also provides postcard-rpc endpoints (see keyboard-icd subfolder) to allow the Host to set the text and control the backlight of an optionally attached I2C LCD (the schematic includes 3v3->5v level shifting to ensure reliable operation with 5V-driven LCDs
 
+![Matrix keyboard picture](https://private-user-images.githubusercontent.com/2261985/400223531-3191ab20-acc9-444a-97f4-25ef8820f795.jpg)
