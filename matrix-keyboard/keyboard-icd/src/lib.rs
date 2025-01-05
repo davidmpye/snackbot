@@ -2,7 +2,6 @@
 
 use postcard_rpc::{endpoints, topics, TopicDirection};
 use postcard_schema::Schema;
-use serde::{Deserialize, Serialize};
 
 endpoints! {
     list = ENDPOINT_LIST;
