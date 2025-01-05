@@ -11,7 +11,7 @@ use embassy_usb::class::hid::{
     HidReader, HidReaderWriter, HidWriter, ReportId, RequestHandler, State,
 };
 use embassy_usb::control::OutResponse;
-use embassy_usb::{Builder, Config as UsbConfig, Handler, UsbDevice};
+use embassy_usb::{Config as UsbConfig, Handler, UsbDevice};
 
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Input, Level, Output, Pull};
@@ -37,11 +37,11 @@ use postcard_rpc::{
     server::{
         impls::embassy_usb_v0_3::{
             dispatch_impl::{
-                spawn_fn, WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl,
+                WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl,
             },
             PacketBuffers,
         },
-        Dispatch, Sender, Server, SpawnContext,
+        Dispatch, Server,
     },
 };
 
@@ -133,7 +133,7 @@ async fn main(spawner: Spawner) {
 
     //We use init_without_build because init consumes the driver, and creates (and doesn't return) a builder otherwise
     let (mut builder, tx_impl, rx_impl) =
-        STORAGE.init_without_build((driver), config, pbufs.tx_buf.as_mut_slice());
+        STORAGE.init_without_build(driver, config, pbufs.tx_buf.as_mut_slice());
     let device_handler = DEVICE_HANDLER.init(MyDeviceHandler::new());
     builder.handler(device_handler);
 
@@ -218,11 +218,11 @@ fn set_backlight(_context: &mut Context, _header: VarHeader, rqst: bool) {
     BACKLIGHT_SETTING.signal(rqst);
 }
 
-fn set_line1_text(context: &mut Context, _header: VarHeader, rqst: [u8; 32]) {
+fn set_line1_text(_context: &mut Context, _header: VarHeader, rqst: [u8; 32]) {
     LINE_1_TEXT.signal(rqst);
 }
 
-fn set_line2_text(context: &mut Context, _header: VarHeader, rqst: [u8; 32]) {
+fn set_line2_text(_context: &mut Context, _header: VarHeader, rqst: [u8; 32]) {
     LINE_2_TEXT.signal(rqst);
 }
 
@@ -272,7 +272,12 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
             //New Line 1 text arrived
             if let Some(line) = LINE_1_TEXT.try_take() {
                 line1_buf[..line.len()].copy_from_slice(&line);
-                line1_text = core::str::from_utf8(&line1_buf).unwrap().trim_end();
+                line1_text = if let Ok(text) = core::str::from_utf8(&line1_buf) {
+                    text.trim_end()
+                }
+                else {
+                    "Invalid ASCII"
+                };
                 changed_line1 = true;
                 line1_scroll_index = 0;
                 //if line longer than 16 chars (display length), it'll need to scroll
@@ -282,7 +287,12 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
             //New Line 2 text arrived
             if let Some(line) = LINE_2_TEXT.try_take() {
                 line2_buf[..line.len()].copy_from_slice(&line);
-                line2_text = core::str::from_utf8(&line2_buf).unwrap().trim_end();
+                line2_text = if let Ok(text) = core::str::from_utf8(&line2_buf) {
+                    text.trim_end()
+                }
+                else {
+                    "Invalid ASCII"
+                };
                 changed_line2 = true;
                 line2_scroll_index = 0;
                 //as above
