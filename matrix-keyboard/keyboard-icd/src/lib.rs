@@ -3,14 +3,15 @@
 use postcard_rpc::{endpoints, topics, TopicDirection};
 use postcard_schema::Schema;
 
+pub type DisplayText =  [[u8;32];2];
+
 endpoints! {
     list = ENDPOINT_LIST;
     omit_std = true;
     | EndpointTy              | RequestTy        | ResponseTy           | Path              |
     | ----------              | ---------        | ----------           | ----              |
     | SetBacklight            | bool             | ()                   | "setBacklight"    |
-    | SetLine1Text            | [u8;32]          | ()                   | "setLine1Text"    |
-    | SetLine2Text            | [u8;32]          | ()                   | "setLine2Text"    |
+    | SetText                 | DisplayText      | ()                   | "setText"         |
 }
 
 topics! {

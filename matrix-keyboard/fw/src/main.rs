@@ -27,9 +27,10 @@ use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use lcd_lcm1602_i2c::sync_lcd::Lcd;
 use static_cell::{ConstStaticCell, StaticCell};
 
+use fixedstr::str32;
+
 //NB if we use second core, this mutex is not suitable
-static LINE_1_TEXT: Signal<ThreadModeRawMutex, [u8; 32]> = Signal::new();
-static LINE_2_TEXT: Signal<ThreadModeRawMutex, [u8; 32]> = Signal::new();
+static DISPLAY_TEXT: Signal<ThreadModeRawMutex, [[u8; 32];2]> = Signal::new();
 static BACKLIGHT_SETTING: Signal<ThreadModeRawMutex, bool> = Signal::new();
 static LCD_ROW_LENGTH: usize = 16;
 
@@ -46,7 +47,7 @@ use postcard_rpc::{
 };
 
 use keyboard_icd::{
-    ServiceModeTopic, SetBacklight, SetLine1Text, SetLine2Text, 
+    ServiceModeTopic, SetBacklight, SetText,
     ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
 };
 
@@ -90,8 +91,7 @@ define_dispatch! {
         | EndpointTy                | kind        | handler                     |
         | ----------                | ----        | -------                     |
         | SetBacklight              | blocking    | set_backlight               |
-        | SetLine1Text              | blocking    | set_line1_text              |
-        | SetLine2Text              | blocking    | set_line2_text              |
+        | SetText                   | blocking    | set_text                    |
 
     };
     topics_in: {
@@ -200,6 +200,7 @@ async fn main(spawner: Spawner) {
     loop {
         let _ = server.run().await;
     }
+
 }
 
 #[embassy_executor::task]
@@ -238,12 +239,16 @@ fn set_backlight(_context: &mut Context, _header: VarHeader, rqst: bool) {
     BACKLIGHT_SETTING.signal(rqst);
 }
 
-fn set_line1_text(_context: &mut Context, _header: VarHeader, rqst: [u8; 32]) {
-    LINE_1_TEXT.signal(rqst);
+fn set_text(_context: &mut Context, _header: VarHeader, rqst: [[u8; 32];2]) {
+    DISPLAY_TEXT.signal(rqst);
 }
 
-fn set_line2_text(_context: &mut Context, _header: VarHeader, rqst: [u8; 32]) {
-    LINE_2_TEXT.signal(rqst);
+
+struct display_line {
+    text: str32,
+    changed : bool,
+    scrolling: bool,
+    scroll_index: usize,
 }
 
 #[embassy_executor::task]
@@ -263,21 +268,22 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
         let _ = lcd.backlight(lcd_lcm1602_i2c::Backlight::On);
         let _ = lcd.clear();
 
-        let mut line1_text = "    SnackBot";
-        let mut line2_text = "Initializing...";
+        //Initial display message
+        let mut display_lines = [
+            display_line {
+                text: str32::from("    SnackBot"),
+                changed: true,
+                scrolling: false,
+                scroll_index:0,
 
-        let mut line1_buf = [0x00u8; 32];
-        let mut line2_buf = [0x00u8; 32];
-
-        //Whether the lines need to be written to screen
-        let mut changed_line1 = true;
-        let mut changed_line2 = true;
-
-        //Used to determine if line needs to be scrolled, and what position it is at
-        let mut line1_scrolling = false;
-        let mut line2_scrolling = false;
-        let mut line1_scroll_index: usize = 0;
-        let mut line2_scroll_index: usize = 0;
+            },
+            display_line {
+                text: str32::from("Initializing..."),
+                changed: true,
+                scrolling: false,
+                scroll_index:0,
+            },
+        ];
 
         loop {
             //if backlight setting has changed, apply it.
@@ -288,86 +294,44 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
                 };
             }
 
-            //New Line 1 text arrived
-            if let Some(line) = LINE_1_TEXT.try_take() {
-                line1_buf[..line.len()].copy_from_slice(&line);
-                line1_text = if let Ok(text) = core::str::from_utf8(&line1_buf) {
-                    text.trim_end()
-                } else {
-                    "Invalid ASCII"
-                };
-                changed_line1 = true;
-                line1_scroll_index = 0;
-                //if line longer than LCD_ROW_LENGTH chars, it'll need to scroll
-                line1_scrolling = line1_text.len() > LCD_ROW_LENGTH;
-            }
-
-            //New Line 2 text arrived
-            if let Some(line) = LINE_2_TEXT.try_take() {
-                line2_buf[..line.len()].copy_from_slice(&line);
-                line2_text = if let Ok(text) = core::str::from_utf8(&line2_buf) {
-                    text.trim_end()
-                } else {
-                    "Invalid ASCII"
-                };
-                changed_line2 = true;
-                line2_scroll_index = 0;
-                //as above
-                line2_scrolling = line2_text.len() > LCD_ROW_LENGTH;
-            }
-
-            let line1_to_display = {
-                if line1_scrolling {
-                    let l = &line1_text[line1_scroll_index..];
-                    let msg_len = line1_text.len();
-                    line1_scroll_index = if line1_scroll_index == msg_len {
-                        0
+            if let Some(line) = DISPLAY_TEXT.try_take() {
+                //Update the display lines
+                for (display_line, new_line) in core::iter::zip(display_lines.iter_mut(), line.iter()) {
+                    let t = if let Ok(text) = core::str::from_utf8(new_line) {
+                        text.trim_end()
                     } else {
-                        line1_scroll_index + 1
+                        "Invalid ASCII"
                     };
-                    changed_line1 = true;
-                    l
-                } else {
-                    line1_text
+
+                    display_line.text = str32::from(t);
+                    display_line.changed = true;
+                    display_line.scroll_index = 0;
+                    //if line longer than LCD_ROW_LENGTH chars, it'll need to scroll
+                    display_line.scrolling = t.len() > LCD_ROW_LENGTH;
                 }
-            };
-
-            let line2_to_display = {
-                if line2_scrolling {
-                    let l = &line2_text[line2_scroll_index..];
-                    let msg_len = line2_text.len();
-                    line2_scroll_index = if line2_scroll_index == msg_len {
-                        0
-                    } else {
-                        line2_scroll_index + 1
-                    };
-                    changed_line2 = true;
-                    l
-                } else {
-                    line2_text
-                }
-            };
-
-            //Closure to update a single line
-            let mut line_update = |row: u8, msg: &str| {
-                let _ = lcd.set_cursor(row, 0);
-                let _ = lcd.write_str("                ");
-                let _ = lcd.set_cursor(row, 0);
-                let _ = lcd.write_str(msg);
-            };
-
-            if changed_line1 {
-                line_update(0, line1_to_display);
-                changed_line1 = false;
             }
 
-            if changed_line2 {
-                line_update(1, line2_to_display);
-                changed_line2 = false;
+            for (row, line) in display_lines.iter_mut().enumerate() {
+                if line.changed || line.scrolling {
+                    let _ = lcd.set_cursor(row as u8, 0);
+                    let _ = lcd.write_str("                ");
+                    let _ = lcd.set_cursor(row as u8, 0);
+                    let _ = lcd.write_str(&line.text.as_str()[line.scroll_index..]);
+                    line.changed = false;
+                }
+                //If line needs to be scrolled, scroll it.
+                if line.scrolling {
+                    if line.scroll_index == line.text.len() {
+                        line.scroll_index = 0;
+                    }
+                    else {
+                        line.scroll_index +=1;
+                    }
+                }
+                Timer::after(Duration::from_millis(250)).await;
             }
-
-            Timer::after(Duration::from_millis(500)).await;
         }
+
     } else {
         warn!("Unable to locate I2C LCD at address 0x27");
     }

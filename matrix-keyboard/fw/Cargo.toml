@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "embassy-rp-examples"
+name = "snackbot-matrix-keyboard"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
@@ -43,6 +43,9 @@ postcard-rpc = { version = "0.11.3", features = ["embassy-usb-0_3-server"] }
 postcard = "1.1.1"
 postcard-schema = "0.2.0"
 keyboard-icd = {version = "0.1.0", path="../keyboard-icd" }
+fixedstr = { version = "0.5.8", features = ["no-alloc"] }
+
+
 [profile.release]
 debug = 2
 lto = true

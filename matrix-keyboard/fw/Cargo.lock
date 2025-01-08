@@ -442,45 +442,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "embassy-rp-examples"
-version = "0.1.0"
-dependencies = [
- "byte-slice-cast",
- "cortex-m",
- "cortex-m-rt",
- "critical-section",
- "defmt",
- "defmt-rtt",
- "embassy-executor",
- "embassy-rp",
- "embassy-sync",
- "embassy-time",
- "embassy-usb",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "embedded-hal-bus",
- "embedded-io-async",
- "embedded-sdmmc",
- "embedded-storage",
- "fixed",
- "fixed-macro",
- "keyboard-icd",
- "lcd-lcm1602-i2c",
- "log",
- "panic-probe",
- "pio",
- "pio-proc",
- "portable-atomic",
- "postcard",
- "postcard-rpc",
- "postcard-schema",
- "rand",
- "rand_core",
- "static_cell",
- "usbd-hid",
-]
-
-[[package]]
 name = "embassy-sync"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -719,6 +680,12 @@ name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
+
+[[package]]
+name = "fixedstr"
+version = "0.5.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60aba7afd9b1b9e1950c2b7e8bcac3cc44a273c62a02717dedca2d0a1aee694d"
 
 [[package]]
 name = "fnv"
@@ -1439,6 +1406,46 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
+
+[[package]]
+name = "snackbot-matrix-keyboard"
+version = "0.1.0"
+dependencies = [
+ "byte-slice-cast",
+ "cortex-m",
+ "cortex-m-rt",
+ "critical-section",
+ "defmt",
+ "defmt-rtt",
+ "embassy-executor",
+ "embassy-rp",
+ "embassy-sync",
+ "embassy-time",
+ "embassy-usb",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "embedded-hal-bus",
+ "embedded-io-async",
+ "embedded-sdmmc",
+ "embedded-storage",
+ "fixed",
+ "fixed-macro",
+ "fixedstr",
+ "keyboard-icd",
+ "lcd-lcm1602-i2c",
+ "log",
+ "panic-probe",
+ "pio",
+ "pio-proc",
+ "portable-atomic",
+ "postcard",
+ "postcard-rpc",
+ "postcard-schema",
+ "rand",
+ "rand_core",
+ "static_cell",
+ "usbd-hid",
+]
 
 [[package]]
 name = "spin"
