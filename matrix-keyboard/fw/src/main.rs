@@ -167,8 +167,8 @@ async fn main(spawner: Spawner) {
     //Description for the matrix keyboard and how the row/columns map to GPIOs
     let col_pins = [
         Output::new(p.PIN_21, Level::Low),
-        Output::new(p.PIN_19, Level::Low),
         Output::new(p.PIN_20, Level::Low),
+        Output::new(p.PIN_19, Level::Low),
     ];
     let row_pins = [
         Input::new(p.PIN_0, Pull::Down),
