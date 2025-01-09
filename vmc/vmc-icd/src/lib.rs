@@ -11,13 +11,58 @@ pub struct ChillerStatus {
     chiller_duty_cycle: u8,  //Averaged over preceding 24 hours as a %
 }
 
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
+pub struct DispenserAddress {
+    row: char,
+    column: char,
+}
+
+pub enum DispenserType {
+    Spiral,
+    Can,
+}
+
+//Information about a dispenser at a particular address
+//Will return None if the motor is not present
+pub type DispenserOption = Option<Dispenser>;
+
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
+pub struct Dispenser {
+    address: DispenserAddress,
+    type: DispenserType,
+    status: DispenserStatus,
+}
+
+pub enum DispenserStatus {
+    Ok,
+    MotorNotHome,
+    OneOrNoCansLeft, 
+    //If motor not present, Dispenser Option would just be None
+}
+
+//The result of attempting a vend operation
+pub type VendResult = Result<(), VendError>;
+
+pub enum VendError {
+    MotorNotPresent,
+    MotorNotHome,
+    MotorStuckHome,
+    MotorStuckNotHome,
+    OneOrNoCansLeft, //Can vendor won't vend if only one can present
+    NoDropDetected,  //not implemented yet - my machine does not support
+}
+
 endpoints! {
     list = ENDPOINT_LIST;
     omit_std = true;
+
     | EndpointTy              | RequestTy        | ResponseTy           | Path              |
     | ----------              | ---------        | ----------           | ----              |
-    | GetChillerStatus        |   ()             | ChillerStatus        | "chillerstatus"   |
-    | setChillerTemp          |   f32            | bool                 | "setchillertemp"  |
+    | GetChillerStatus        | ()               | ChillerStatus        | "chillerstatus"   |
+    | SetChillerTemp          | f32              | bool                 | "setchillertemp"  |
+    | GetDispenserInfo        | DispenserAddress | DispenserOption      | "dispenserinfo"   |   //Get current state of dispenser at a row/col address
+    | Vend                    | DispenserAddress | VendResult           | "vend"            |
+    | ForceVend               | DispenserAddress | VendResult           | "forcevend"       |   //Attempt vend regardless of initial state
 }
 
 topics! {
