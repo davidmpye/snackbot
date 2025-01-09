@@ -17,6 +17,7 @@ pub struct DispenserAddress {
     column: char,
 }
 
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
 pub enum DispenserType {
     Spiral,
     Can,
@@ -29,10 +30,11 @@ pub type DispenserOption = Option<Dispenser>;
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
 pub struct Dispenser {
     address: DispenserAddress,
-    type: DispenserType,
+    dispenser_type: DispenserType,
     status: DispenserStatus,
 }
 
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
 pub enum DispenserStatus {
     Ok,
     MotorNotHome,
@@ -43,6 +45,7 @@ pub enum DispenserStatus {
 //The result of attempting a vend operation
 pub type DispenseResult = Result<(), DispenseError>;
 
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
 pub enum DispenseError {
     MotorNotPresent,
     MotorNotHome,
@@ -62,7 +65,7 @@ endpoints! {
     | SetChillerTemp          | f32              | bool                 | "setchillertemp"  |
     | GetDispenserInfo        | DispenserAddress | DispenserOption      | "dispenserinfo"   |   //Get current state of dispenser at a row/col address
     | Dispense                | DispenserAddress | DispenseResult       | "dispence"        |
-    | ForceDispense           | DispenserAddress | VendResult           | "forcedispense"   |   //Attempt vend regardless of initial state
+    | ForceDispense           | DispenserAddress | DispenseResult       | "forcedispense"   |   //Attempt vend regardless of initial state
 }
 
 topics! {
@@ -78,4 +81,3 @@ topics! {
     | TopicTy                   | MessageTy     | Path              | Cfg                           |
     | -------                   | ---------     | ----              | ---                           |
 }
-
