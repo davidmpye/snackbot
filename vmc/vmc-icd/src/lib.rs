@@ -16,7 +16,7 @@ endpoints! {
     omit_std = true;
     | EndpointTy              | RequestTy        | ResponseTy           | Path              |
     | ----------              | ---------        | ----------           | ----              |
-    | ChillerStatus           |   ()             |                      | "chillerstatus"   |
+    | GetChillerStatus        |   ()             | ChillerStatus        | "chillerstatus"   |
     | setChillerTemp          |   f32            | bool                 | "setchillertemp"  |
 }
 
