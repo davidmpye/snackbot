@@ -41,9 +41,9 @@ pub enum DispenserStatus {
 }
 
 //The result of attempting a vend operation
-pub type VendResult = Result<(), VendError>;
+pub type DispenseResult = Result<(), DispenseError>;
 
-pub enum VendError {
+pub enum DispenseError {
     MotorNotPresent,
     MotorNotHome,
     MotorStuckHome,
@@ -61,8 +61,8 @@ endpoints! {
     | GetChillerStatus        | ()               | ChillerStatus        | "chillerstatus"   |
     | SetChillerTemp          | f32              | bool                 | "setchillertemp"  |
     | GetDispenserInfo        | DispenserAddress | DispenserOption      | "dispenserinfo"   |   //Get current state of dispenser at a row/col address
-    | Vend                    | DispenserAddress | VendResult           | "vend"            |
-    | ForceVend               | DispenserAddress | VendResult           | "forcevend"       |   //Attempt vend regardless of initial state
+    | Dispense                | DispenserAddress | DispenseResult       | "dispence"        |
+    | ForceDispense           | DispenserAddress | VendResult           | "forcedispense"   |   //Attempt vend regardless of initial state
 }
 
 topics! {
