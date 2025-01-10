@@ -63,7 +63,7 @@ pub struct MotorControllerInterface<'a> {
 }
 
 impl<'a> MotorControllerInterface<'a> {
-    fn new(
+    async fn new(
         bus_pin0: AnyPin,
         bus_pin1: AnyPin,
         bus_pin2: AnyPin,
@@ -72,6 +72,7 @@ impl<'a> MotorControllerInterface<'a> {
         bus_pin5: AnyPin,
         bus_pin6: AnyPin,
         bus_pin7: AnyPin,
+
         clk_pin1: AnyPin,
         clk_pin2: AnyPin,
         clk_pin3: AnyPin,
@@ -96,38 +97,42 @@ impl<'a> MotorControllerInterface<'a> {
                 Output::new(clk_pin3, Level::Low),
             ],
             output_enable: Output::new(oe_pin, Level::High),
-            flipflop_clr: Output::new(flipflop_clr_pin, Level::High),
+            //Clear the flipflop data
+            flipflop_clr: Output::new(flipflop_clr_pin, Level::Low)
         };
-
         for pin in x.bus.iter_mut() {
             pin.set_low();
+            pin.set_pull(Pull::None);
             pin.set_as_input();
         }
+
+        //Pull flipflop clear high after 50uS to allow flipflops to be written
+        Timer::after_micros(50).await;
+        x.flipflop_clr.set_high();
+        
         x
     }
 
     async fn write_bytes(&mut self, bytes: [u8; 3]) {
         for (clk_pin, byte) in core::iter::zip(self.clks.iter_mut(), bytes.iter()) {
+            info!("Writing out byte {}", byte);
             //write out the data
             for (bit_index, gpio) in self.bus.iter_mut().enumerate() {
                 if byte & (0x01 << bit_index) == 0 {
-                    //output enable, to pull gpio low
-                    gpio.set_as_output();
+                    gpio.set_low();
                 } else {
-                    //gpio floating, gpio pulled high by external resistors
-                    gpio.set_as_input();
+                    gpio.set_high();
                 }
+                gpio.set_as_output();
             }
-            //Pulse clock pin for 10uS to latch data
-            clk_pin.set_high();
-            //Pause to allow latching
-            Timer::after_micros(10).await;
-            //clk pin low
             clk_pin.set_low();
+            Timer::after_micros(10).await;
+            clk_pin.set_high(); 
+            Timer::after_micros(10).await;
         }
         //Put bus pins back into input mode
-        for clk_pin in self.bus.iter_mut() {
-            clk_pin.set_as_input();
+        for gpio in self.bus.iter_mut() {
+            gpio.set_as_input();
         }
     }
 
@@ -137,19 +142,28 @@ impl<'a> MotorControllerInterface<'a> {
         //Allow 100uS for it to stabilise its' state
         Timer::after_micros(100).await;
         let mut byte = 0x00u8;
-        for (bit_index, gpio) in self.bus.iter().enumerate() {
+        for (bit_index, gpio) in self.bus.iter_mut().enumerate() {
             if gpio.is_high() {
-                byte |= 0x01 << bit_index;
+                byte |= (0x01 << bit_index);
             }
         }
         //Return buffer to write mode
         self.output_enable.set_high();
+        Timer::after_micros(100).await;
+        info!("Byte is {}", byte);
         byte
     }
 
     fn calc_drive_bytes(row: char, col: char) -> Option<[u8; 3]> {
         /*
         Wiring is as follows
+
+        U2:
+        0x01 - Row E Even
+        0x02 - Row E Odd
+        0x04 - Row F Even
+        0x08 - Row F Odd
+
         U3:
         0x01 - Cols 0,1
         0x02 - Cols 2,3
@@ -168,12 +182,6 @@ impl<'a> MotorControllerInterface<'a> {
         0x20 - Row C Odd
         0x40 - Row D Even
         0x80 - Row D Odd
-
-        U2:
-        0x01 - Row E Even
-        0x02 - Row E Odd
-        0x04 - Row F Even
-        0x08 - Row F Odd
 
         U3:
         0x20 - Row G (there's no odd!) - Gum and mint row drive (if fitted)
@@ -230,7 +238,7 @@ impl<'a> MotorControllerInterface<'a> {
         info!("Driving motor at {}{}", row, col);
         if let Some(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row, col) {
             //Send the bytes to the motor driver
-            debug!("Calculated drive bytes: {=[u8]:#04x}", drive_bytes);
+            info!("Calculated drive bytes: {=[u8]:#04x}", drive_bytes);
             self.write_bytes(drive_bytes).await;
 
             //Calculate motor homed bitmask - needs refactoring elsewhere...
@@ -241,16 +249,19 @@ impl<'a> MotorControllerInterface<'a> {
                     if (col as u8 - b'0') / 2 == 0 {
                         0x01u8
                     } else {
-                        0x02u8
+                        0x02u8  
                     }
                 }
             };
-            debug!("Motor homed bitmask is {=u8}", motor_home_bitmask);
+            info!("Motor homed bitmask is {=u8}", motor_home_bitmask);
+
+
             //Now start watching for the motor to leave home
             debug!("Waiting for motor to leave home");
             let mut left_home = false;
             for _i in 0..20 {
                 let b = self.read_byte().await;
+                info!("Status byte is {=u8}", b);
                 if b & motor_home_bitmask == 0 {
                     left_home = true;
                     break;
@@ -258,14 +269,14 @@ impl<'a> MotorControllerInterface<'a> {
                 Timer::after_millis(50).await;
             }
             if left_home {
-                debug!("Motor left home");
+                info!("Motor left home");
             } else {
                 error!("Motor did not leave home in time");
                 return Err(DispenseError::MotorStuckHome);
             }
 
             let mut returned_home = false;
-            debug!("Waiting for motor to return home");
+            info!("Waiting for motor to return home");
             for _i in 0..60 {
                 let b = self.read_byte().await;
                 if b & motor_home_bitmask != 0 {
@@ -276,13 +287,14 @@ impl<'a> MotorControllerInterface<'a> {
             }
 
             if returned_home {
-                debug!("Motor returned home");
+                info!("Motor returned home");
             } else {
-                error!("Motor did not return home");
+                info!("Motor did not return home");
+                self.write_bytes([0x00, 0x00, 0x00]).await;
                 return Err(DispenseError::MotorStuckNotHome);
             }
             //Stop driving the motor
-            self.write_bytes([0x00, 0x00, 0x00]);
+            self.write_bytes([0x00, 0x00, 0x00]).await;
         } else {
             error!("Unable to calculate drive bytes - aborted");
         }
@@ -390,8 +402,10 @@ async fn main(spawner: Spawner) {
         p.PIN_11.degrade(),
         //clr pin
         p.PIN_12.degrade(),
-    );
+    ).await;
 
+
+    x.dispense('B','2').await;
     //Postcard server mainloop just runs here
     loop {
         let _ = server.run().await;
