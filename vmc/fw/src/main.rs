@@ -36,8 +36,8 @@ use postcard_rpc::{
 };
 
 use vmc_icd::{
-    Dispense, DispenseResult, DispenserOption, ForceDispense, GetDispenserInfo, ENDPOINT_LIST,
-    TOPICS_IN_LIST, TOPICS_OUT_LIST,
+    Dispense, DispenseError, DispenseResult, DispenserOption, ForceDispense, GetDispenserInfo,
+    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
 };
 
 use {defmt_rtt as _, panic_probe as _};
@@ -144,7 +144,7 @@ impl<'a> MotorControllerInterface<'a> {
         }
         //Return buffer to write mode
         self.output_enable.set_high();
-        byte  
+        byte
     }
 
     fn calc_drive_bytes(row: char, col: char) -> Option<[u8; 3]> {
@@ -178,8 +178,8 @@ impl<'a> MotorControllerInterface<'a> {
         U3:
         0x20 - Row G (there's no odd!) - Gum and mint row drive (if fitted)
         */
-        let mut drive_bytes:[u8;3] = [0x00;3];
-        
+        let mut drive_bytes: [u8; 3] = [0x00; 3];
+
         //Check row and col are calculable - note, NOT whether they are present in the machine
         if !row.is_ascii() || row < 'A' || row > 'G' {
             return None;
@@ -227,22 +227,63 @@ impl<'a> MotorControllerInterface<'a> {
     }
 
     pub async fn dispense(&mut self, row: char, col: char) -> DispenseResult {
-        info!("Driving motor at {}{}", row, col);      
-        if let Some(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row,col) {
+        info!("Driving motor at {}{}", row, col);
+        if let Some(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row, col) {
             //Send the bytes to the motor driver
             debug!("Calculated drive bytes: {=[u8]:#04x}", drive_bytes);
             self.write_bytes(drive_bytes).await;
+
+            //Calculate motor homed bitmask - needs refactoring elsewhere...
+            let motor_home_bitmask = match row {
+                'E' => 0x10u8,
+                'F' => 0x40u8,
+                _ => {
+                    if (col as u8 - b'0') / 2 == 0 {
+                        0x01u8
+                    } else {
+                        0x02u8
+                    }
+                }
+            };
+            debug!("Motor homed bitmask is {=u8}", motor_home_bitmask);
             //Now start watching for the motor to leave home
+            debug!("Waiting for motor to leave home");
+            let mut left_home = false;
+            for _i in 0..20 {
+                let b = self.read_byte().await;
+                if b & motor_home_bitmask == 0 {
+                    left_home = true;
+                    break;
+                }
+                Timer::after_millis(50).await;
+            }
+            if left_home {
+                debug!("Motor left home");
+            } else {
+                error!("Motor did not leave home in time");
+                return Err(DispenseError::MotorStuckHome);
+            }
 
+            let mut returned_home = false;
+            debug!("Waiting for motor to return home");
+            for _i in 0..60 {
+                let b = self.read_byte().await;
+                if b & motor_home_bitmask != 0 {
+                    returned_home = true;
+                    break;
+                }
+                Timer::after_millis(50).await;
+            }
 
-            //Now wait for the motor to return home
-
-
-
-
-
-        }
-        else {
+            if returned_home {
+                debug!("Motor returned home");
+            } else {
+                error!("Motor did not return home");
+                return Err(DispenseError::MotorStuckNotHome);
+            }
+            //Stop driving the motor
+            self.write_bytes([0x00, 0x00, 0x00]);
+        } else {
             error!("Unable to calculate drive bytes - aborted");
         }
         Ok(())
@@ -331,7 +372,7 @@ async fn main(spawner: Spawner) {
     spawner.must_spawn(usb_task(usb));
 
     //Set up the pins for the VMC interface
-    let x = MotorControllerInterface::new(
+    let mut x = MotorControllerInterface::new(
         //bus pins
         p.PIN_0.degrade(),
         p.PIN_1.degrade(),
@@ -350,6 +391,7 @@ async fn main(spawner: Spawner) {
         //clr pin
         p.PIN_12.degrade(),
     );
+
     //Postcard server mainloop just runs here
     loop {
         let _ = server.run().await;
