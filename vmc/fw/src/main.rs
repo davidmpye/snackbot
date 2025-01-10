@@ -6,7 +6,7 @@ use defmt::*;
 
 use embassy_executor::Spawner;
 
-use embassy_sync::{signal::Signal, blocking_mutex::raw::ThreadModeRawMutex};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Timer};
 
 use embassy_usb::class::hid::{
@@ -16,16 +16,12 @@ use embassy_usb::control::OutResponse;
 use embassy_usb::{Config as UsbConfig, Handler, UsbDevice};
 
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{AnyPin, Input, Level, Output, Pin, Pull};
+use embassy_rp::gpio::{AnyPin, Flex, Input, Level, Output, Pin, Pull};
+use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
-use embassy_rp::peripherals::USB;
-
 
 use static_cell::{ConstStaticCell, StaticCell};
-
-
-//NB if we use second core, this mutex is not suitable
 
 use postcard_rpc::{
     define_dispatch,
@@ -39,7 +35,10 @@ use postcard_rpc::{
     },
 };
 
-use vmc_icd::{ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST};
+use vmc_icd::{
+    Dispense, DispenseResult, DispenserOption, ForceDispense, GetDispenserInfo, ENDPOINT_LIST,
+    TOPICS_IN_LIST, TOPICS_OUT_LIST,
+};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -55,6 +54,200 @@ type AppServer = Server<AppTx, AppRx, WireRxBuf, MyApp>;
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
 });
+
+pub struct MotorControllerInterface<'a> {
+    bus: [Flex<'a>; 8],
+    clks: [Output<'a>; 3],
+    output_enable: Output<'a>,
+    flipflop_clr: Output<'a>,
+}
+
+impl<'a> MotorControllerInterface<'a> {
+    fn new(
+        bus_pin0: AnyPin,
+        bus_pin1: AnyPin,
+        bus_pin2: AnyPin,
+        bus_pin3: AnyPin,
+        bus_pin4: AnyPin,
+        bus_pin5: AnyPin,
+        bus_pin6: AnyPin,
+        bus_pin7: AnyPin,
+        clk_pin1: AnyPin,
+        clk_pin2: AnyPin,
+        clk_pin3: AnyPin,
+
+        oe_pin: AnyPin,
+        flipflop_clr_pin: AnyPin,
+    ) -> Self {
+        let mut x = Self {
+            bus: [
+                Flex::new(bus_pin0),
+                Flex::new(bus_pin1),
+                Flex::new(bus_pin2),
+                Flex::new(bus_pin3),
+                Flex::new(bus_pin4),
+                Flex::new(bus_pin5),
+                Flex::new(bus_pin6),
+                Flex::new(bus_pin7),
+            ],
+            clks: [
+                Output::new(clk_pin1, Level::Low),
+                Output::new(clk_pin2, Level::Low),
+                Output::new(clk_pin3, Level::Low),
+            ],
+            output_enable: Output::new(oe_pin, Level::High),
+            flipflop_clr: Output::new(flipflop_clr_pin, Level::High),
+        };
+
+        for pin in x.bus.iter_mut() {
+            pin.set_low();
+            pin.set_as_input();
+        }
+        x
+    }
+
+    async fn write_bytes(&mut self, bytes: [u8; 3]) {
+        for (clk_pin, byte) in core::iter::zip(self.clks.iter_mut(), bytes.iter()) {
+            //write out the data
+            for (bit_index, gpio) in self.bus.iter_mut().enumerate() {
+                if byte & (0x01 << bit_index) == 0 {
+                    //output enable, to pull gpio low
+                    gpio.set_as_output();
+                } else {
+                    //gpio floating, gpio pulled high by external resistors
+                    gpio.set_as_input();
+                }
+            }
+            //Pulse clock pin for 10uS to latch data
+            clk_pin.set_high();
+            //Pause to allow latching
+            Timer::after_micros(10).await;
+            //clk pin low
+            clk_pin.set_low();
+        }
+        //Put bus pins back into input mode
+        for clk_pin in self.bus.iter_mut() {
+            clk_pin.set_as_input();
+        }
+    }
+
+    async fn read_byte(&mut self) -> u8 {
+        //Pull buffer OE to low to put it into read mode
+        self.output_enable.set_low();
+        //Allow 100uS for it to stabilise its' state
+        Timer::after_micros(100).await;
+        let mut byte = 0x00u8;
+        for (bit_index, gpio) in self.bus.iter().enumerate() {
+            if gpio.is_high() {
+                byte |= 0x01 << bit_index;
+            }
+        }
+        //Return buffer to write mode
+        self.output_enable.set_high();
+        byte  
+    }
+
+    fn calc_drive_bytes(row: char, col: char) -> Option<[u8; 3]> {
+        /*
+        Wiring is as follows
+        U3:
+        0x01 - Cols 0,1
+        0x02 - Cols 2,3
+        0x04 - Cols 4,5
+        0x08 - Cols 6,7
+        0x10 - Cols 8,9
+
+        Rows are wired as follows:
+
+        U4:
+        0x01 - Row A Even
+        0x02 - Row A Odd
+        0x04 - Row B Even
+        0x08 - Row B Odd
+        0x10 - Row C Even
+        0x20 - Row C Odd
+        0x40 - Row D Even
+        0x80 - Row D Odd
+
+        U2:
+        0x01 - Row E Even
+        0x02 - Row E Odd
+        0x04 - Row F Even
+        0x08 - Row F Odd
+
+        U3:
+        0x20 - Row G (there's no odd!) - Gum and mint row drive (if fitted)
+        */
+        let mut drive_bytes:[u8;3] = [0x00;3];
+        
+        //Check row and col are calculable - note, NOT whether they are present in the machine
+        if !row.is_ascii() || row < 'A' || row > 'G' {
+            return None;
+        }
+        if !col.is_ascii() || col < '0' || col > '9' {
+            return None;
+        }
+
+        let row_offset = row as u8 - b'A';
+        let col_offset = match row as u8 {
+            //Special handling for can chiller rows (E/F) due to discrepancy in numbering and wiring!
+            //Row E +F cans are numbered E0, E1, E2, E3 but are wired E0, E2, E4, E6
+            //G - Gum and Mint may need special handling if implemented as I suspect that's wired 0/2/4/6/8 also.
+            //G is the optional Gum/Mint module.
+            b'E' | b'F' => (col as u8 - b'0') * 2,
+            //Standard column offset
+            _ => col as u8 - b'0',
+        };
+
+        let even_odd_offset: u8 = col_offset % 2;
+
+        //Set row drive bit on appropriate flipflop
+        match row as u8 {
+            b'A' | b'B' | b'C' | b'D' => {
+                //U4
+                drive_bytes[2] = 0x01 << (row_offset * 2 + even_odd_offset);
+            }
+            b'E' | b'F' => {
+                //U2
+                drive_bytes[0] = 0x01 << ((row_offset - 4) * 2 + even_odd_offset);
+            }
+            b'G' => {
+                //U3
+                drive_bytes[1] = 0x20;
+            }
+            _ => {
+                //This shouldn't happen!
+                defmt::panic!("Asked to apply invalid row calculation!")
+            }
+        }
+        //Set column drive bit
+        drive_bytes[1] |= 0x01 << (col_offset / 2);
+
+        Some(drive_bytes)
+    }
+
+    pub async fn dispense(&mut self, row: char, col: char) -> DispenseResult {
+        info!("Driving motor at {}{}", row, col);      
+        if let Some(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row,col) {
+            //Send the bytes to the motor driver
+            debug!("Calculated drive bytes: {=[u8]:#04x}", drive_bytes);
+            self.write_bytes(drive_bytes).await;
+            //Now start watching for the motor to leave home
+
+
+            //Now wait for the motor to return home
+
+
+
+
+
+        }
+        else {
+            error!("Unable to calculate drive bytes - aborted");
+        }
+        Ok(())
+    }
+}
 
 pub struct Context {
     //Probably not useful
@@ -96,7 +289,7 @@ async fn main(spawner: Spawner) {
     let mut config = UsbConfig::new(0xDEAD, 0xBEEF);
 
     config.manufacturer = Some("Snackbot");
-    config.product = Some("vmc"); 
+    config.product = Some("vmc");
     config.serial_number = Some("12345678");
 
     config.device_class = 0xEF;
@@ -137,17 +330,34 @@ async fn main(spawner: Spawner) {
     //USB device handler task
     spawner.must_spawn(usb_task(usb));
 
+    //Set up the pins for the VMC interface
+    let x = MotorControllerInterface::new(
+        //bus pins
+        p.PIN_0.degrade(),
+        p.PIN_1.degrade(),
+        p.PIN_2.degrade(),
+        p.PIN_3.degrade(),
+        p.PIN_4.degrade(),
+        p.PIN_5.degrade(),
+        p.PIN_6.degrade(),
+        p.PIN_7.degrade(),
+        //clk pins
+        p.PIN_8.degrade(),
+        p.PIN_9.degrade(),
+        p.PIN_10.degrade(),
+        //oe pin
+        p.PIN_11.degrade(),
+        //clr pin
+        p.PIN_12.degrade(),
+    );
     //Postcard server mainloop just runs here
     loop {
         let _ = server.run().await;
     }
-
 }
 
 type MyUsbDriver = UsbDriver<'static, USB>;
 type MyUsbDevice = UsbDevice<'static, MyUsbDriver>;
-type MyHidWriter = HidWriter<'static, MyUsbDriver, 8>;
-type MyHidReader = HidReader<'static, MyUsbDriver, 1>;
 
 #[embassy_executor::task]
 async fn usb_task(mut usb: MyUsbDevice) -> ! {
