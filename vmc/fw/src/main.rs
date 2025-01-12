@@ -7,7 +7,7 @@ use defmt::*;
 use embassy_executor::Spawner;
 
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, signal::Signal};
-use embassy_time::{Delay, Duration, Timer};
+use embassy_time::{Delay, Duration, Timer, WithTimeout};
 
 use embassy_usb::class::hid::{
     HidReader, HidReaderWriter, HidWriter, ReportId, RequestHandler, State,
@@ -98,7 +98,7 @@ impl<'a> MotorControllerInterface<'a> {
             ],
             output_enable: Output::new(oe_pin, Level::High),
             //Clear the flipflop data
-            flipflop_clr: Output::new(flipflop_clr_pin, Level::Low)
+            flipflop_clr: Output::new(flipflop_clr_pin, Level::Low),
         };
         for pin in x.bus.iter_mut() {
             pin.set_low();
@@ -108,7 +108,7 @@ impl<'a> MotorControllerInterface<'a> {
         //Pull flipflop clear high after 50uS to allow flipflops to be written
         Timer::after_micros(50).await;
         x.flipflop_clr.set_high();
-        
+
         x
     }
 
@@ -126,7 +126,7 @@ impl<'a> MotorControllerInterface<'a> {
             }
             clk_pin.set_low();
             Timer::after_micros(10).await;
-            clk_pin.set_high(); 
+            clk_pin.set_high();
             Timer::after_micros(10).await;
         }
         //Put bus pins back into input mode
@@ -230,7 +230,10 @@ impl<'a> MotorControllerInterface<'a> {
         //Set column drive bit
         drive_bytes[1] |= 0x01 << (col_offset / 2);
 
-        debug!("Calculated drive byte for {}{} as {=[u8]:#04x}", row, col, drive_bytes);
+        debug!(
+            "Calculated drive byte for {}{} as {=[u8]:#04x}",
+            row, col, drive_bytes
+        );
         Some(drive_bytes)
     }
 
@@ -241,64 +244,53 @@ impl<'a> MotorControllerInterface<'a> {
             self.write_bytes(drive_bytes).await;
 
             //Calculate motor homed bitmask - needs refactoring elsewhere...
-            let motor_home_bitmask = match row {
-                'E' => 0x10u8,
-                'F' => 0x40u8,
+            let motor_home_gpio_index = match row {
+                'E' => 4, //0x10u8, 00000000
+                'F' => 6, //0x40u8,
                 _ => {
                     if (col as u8 - b'0') / 2 == 0 {
-                        0x01u8
+                        0 //0x01
                     } else {
-                        0x02u8  
+                        1 //0x02u8
                     }
                 }
             };
-            debug!("Motor homed bitmask is {=u8}", motor_home_bitmask);
+            debug!("Motor homed gpio is is {=u8}", motor_home_gpio_index);
+
+            //Should check it is home at the start of the vend...
 
             //Now start watching for the motor to leave home
             debug!("Waiting for motor to leave home");
-            let mut left_home = false;
-            for _i in 0..20 {
-                let b = self.read_byte().await;
-                debug!("Status byte is {=u8}", b);
-                if b & motor_home_bitmask == 0 {
-                    left_home = true;
-                    break;
-                }
-                Timer::after_millis(50).await;
-            }
-            if left_home {
+            let b = self.bus[motor_home_gpio_index]
+                .wait_for_low()
+                .with_timeout(Duration::from_millis(1000))
+                .await;
+            if b.is_ok() {
                 debug!("Motor left home");
             } else {
+                //Timeout occurred
                 error!("Motor did not leave home in time");
                 self.write_bytes([0x00, 0x00, 0x00]).await;
                 return Err(DispenseError::MotorStuckHome);
             }
 
-            let mut returned_home = false;
-            debug!("Waiting for motor to return home");
-            for _i in 0..60 {
-                let b = self.read_byte().await;
-                if b & motor_home_bitmask != 0 {
-                    returned_home = true;
-                    break;
-                }
-                Timer::after_millis(50).await;
-            }
-
-            if returned_home {
-                debug!("Motor returned home");
+            //Now the motor is moving, it has 3 seconds to return home to complete the vend cycles
+            let b = self.bus[motor_home_gpio_index]
+                .wait_for_high()
+                .with_timeout(Duration::from_millis(3000))
+                .await;
+            if b.is_ok() {
+                info!("Vend completed successfully");
+                Ok(())
             } else {
-                error!("Motor did not return home");
+                error!("Motor did not return home in time");
                 self.write_bytes([0x00, 0x00, 0x00]).await;
                 return Err(DispenseError::MotorStuckNotHome);
             }
-            //Stop driving the motor
-            self.write_bytes([0x00, 0x00, 0x00]).await;
         } else {
             error!("Unable to calculate drive bytes - aborted");
+            return Err(DispenseError::InvalidAddress);
         }
-        info!("Vend completed successfully");
-        Ok(())
     }
 }
 
@@ -402,9 +394,10 @@ async fn main(spawner: Spawner) {
         p.PIN_11.degrade(),
         //clr pin
         p.PIN_12.degrade(),
-    ).await;
+    )
+    .await;
 
-    x.dispense('B','2').await;
+    x.dispense('B', '2').await;
 
     //Postcard server mainloop just runs here
     loop {

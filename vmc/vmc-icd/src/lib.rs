@@ -53,6 +53,7 @@ pub enum DispenseError {
     MotorStuckNotHome,
     OneOrNoCansLeft, //Can vendor won't vend if only one can present
     NoDropDetected,  //not implemented yet - my machine does not support
+    InvalidAddress,
 }
 
 endpoints! {
