@@ -245,7 +245,7 @@ impl<'a> MotorControllerInterface<'a> {
 
             //Calculate motor homed bitmask - needs refactoring elsewhere...
             let motor_home_gpio_index = match row {
-                'E' => 4, //0x10u8, 00000000
+                'E' => 4, //0x10u8
                 'F' => 6, //0x40u8,
                 _ => {
                     if (col as u8 - b'0') / 2 == 0 {
@@ -255,7 +255,7 @@ impl<'a> MotorControllerInterface<'a> {
                     }
                 }
             };
-            debug!("Motor homed gpio is is {=u8}", motor_home_gpio_index);
+            debug!("Motor homed gpio index is is {=u8}", motor_home_gpio_index);
 
             //Should check it is home at the start of the vend...
 
@@ -268,8 +268,7 @@ impl<'a> MotorControllerInterface<'a> {
             if b.is_ok() {
                 debug!("Motor left home");
             } else {
-                //Timeout occurred
-                error!("Motor did not leave home in time");
+                error!("Motor did not leave home in time (1 sec)");
                 self.write_bytes([0x00, 0x00, 0x00]).await;
                 return Err(DispenseError::MotorStuckHome);
             }
@@ -283,7 +282,7 @@ impl<'a> MotorControllerInterface<'a> {
                 info!("Vend completed successfully");
                 Ok(())
             } else {
-                error!("Motor did not return home in time");
+                error!("Motor did not return home in time (3 sec)");
                 self.write_bytes([0x00, 0x00, 0x00]).await;
                 return Err(DispenseError::MotorStuckNotHome);
             }
