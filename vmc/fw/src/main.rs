@@ -1,13 +1,18 @@
 #![no_std]
 #![no_main]
 
+
+use embassy_sync::mutex::Mutex;
+
 use core::sync::atomic::{AtomicBool, Ordering};
 use defmt::*;
 
 use embassy_executor::Spawner;
 
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, signal::Signal};
-use embassy_time::{Delay, Duration, Timer, WithTimeout};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+
+use embassy_time::{Duration, Timer, WithTimeout};
 
 use embassy_usb::class::hid::{
     HidReader, HidReaderWriter, HidWriter, ReportId, RequestHandler, State,
@@ -50,6 +55,9 @@ type AppStorage = WireStorage<ThreadModeRawMutex, AppDriver, 256, 256, 64, 256>;
 type AppTx = WireTxImpl<ThreadModeRawMutex, AppDriver>;
 type AppRx = WireRxImpl<AppDriver>;
 type AppServer = Server<AppTx, AppRx, WireRxBuf, MyApp>;
+
+static MOTOR_CONTROLLER_INTERFACE: Mutex<CriticalSectionRawMutex,Option<MotorControllerInterface>> = Mutex::new(None);
+
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
@@ -184,10 +192,11 @@ impl<'a> MotorControllerInterface<'a> {
         let mut drive_bytes: [u8; 3] = [0x00; 3];
 
         //Check row and col are calculable - note, NOT whether they are present in the machine
-        if !row.is_ascii() || row < 'A' || row > 'G' {
+        if !row.is_ascii_uppercase()  || row < 'A' || row > 'G' {
             return None;
         }
-        if !col.is_ascii_digit() || col < '0' || col > '9' {
+
+        if !col.is_ascii_digit() {
             return None;
         }
 
@@ -239,7 +248,7 @@ impl<'a> MotorControllerInterface<'a> {
             //Send the bytes to the motor driver
             self.write_bytes(drive_bytes).await;
 
-            //Calculate motor homed bitmask - needs refactoring elsewhere...
+            //Calculate which GPIO we need to watch to see the motor's home status
             let motor_home_gpio_index = match row {
                 'E' => 4, //0x10u8
                 'F' => 6, //0x40u8,
@@ -252,10 +261,6 @@ impl<'a> MotorControllerInterface<'a> {
                 }
             };
             debug!("Motor homed gpio index is is {=u8}", motor_home_gpio_index);
-
-            //Should check it is home at the start of the vend...
-
-            //Now start watching for the motor to leave home
             debug!("Waiting for motor to leave home");
             self.output_enable.set_low();
             //Buffer seems to need time to 'settle'
@@ -266,7 +271,6 @@ impl<'a> MotorControllerInterface<'a> {
                 .with_timeout(Duration::from_millis(1000))
                 .await;
             
-
             if b.is_ok() {
                 debug!("Motor left home");
             } else {
@@ -366,8 +370,8 @@ async fn main(spawner: Spawner) {
     //We use init_without_build because init consumes the driver, and creates (and doesn't return) a builder otherwise
     let (mut builder, tx_impl, rx_impl) =
         STORAGE.init_without_build(driver, config, pbufs.tx_buf.as_mut_slice());
-    let device_handler = DEVICE_HANDLER.init(MyDeviceHandler::new());
-    builder.handler(device_handler);
+        let device_handler = DEVICE_HANDLER.init(MyDeviceHandler::new());
+        builder.handler(device_handler);
 
     let context = Context {};
 
@@ -382,35 +386,42 @@ async fn main(spawner: Spawner) {
         vkk,
     );
 
+    {
+        let interface =      MotorControllerInterface::new(
+            //bus pins
+            p.PIN_0.degrade(),
+            p.PIN_1.degrade(),
+            p.PIN_2.degrade(),
+            p.PIN_3.degrade(),
+            p.PIN_4.degrade(),
+            p.PIN_5.degrade(),
+            p.PIN_6.degrade(),
+            p.PIN_7.degrade(),
+            //clk pins
+            p.PIN_8.degrade(),
+            p.PIN_9.degrade(),
+            p.PIN_10.degrade(),
+            //oe pin
+            p.PIN_11.degrade(),
+            //clr pin
+            p.PIN_12.degrade(),
+        ).await;
+        //Move interface into the mutex
+        let mut m = MOTOR_CONTROLLER_INTERFACE.lock().await;
+        *m = Some(interface);
+    }
+
     // Build the builder - USB device will be run by usb_task
     let usb: UsbDevice<'_, UsbDriver<'_, USB>> = builder.build();
 
     //USB device handler task
     spawner.must_spawn(usb_task(usb));
 
-    //Set up the pins for the VMC interface
-    let mut x = MotorControllerInterface::new(
-        //bus pins
-        p.PIN_0.degrade(),
-        p.PIN_1.degrade(),
-        p.PIN_2.degrade(),
-        p.PIN_3.degrade(),
-        p.PIN_4.degrade(),
-        p.PIN_5.degrade(),
-        p.PIN_6.degrade(),
-        p.PIN_7.degrade(),
-        //clk pins
-        p.PIN_8.degrade(),
-        p.PIN_9.degrade(),
-        p.PIN_10.degrade(),
-        //oe pin
-        p.PIN_11.degrade(),
-        //clr pin
-        p.PIN_12.degrade(),
-    )
-    .await;
-
-    x.dispense('A', '0').await;
+    {
+        //Unlock the mutex and drive the dispenser
+        let mut x = MOTOR_CONTROLLER_INTERFACE.lock().await;
+        let _ = x.as_mut().unwrap().dispense('A', '0').await;
+    }
 
     //Postcard server mainloop just runs here
     loop {
