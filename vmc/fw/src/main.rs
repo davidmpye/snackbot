@@ -104,6 +104,7 @@ impl<'a> MotorControllerInterface<'a> {
             pin.set_low();
             pin.set_pull(Pull::None);
             pin.set_as_input();
+
         }
         //Pull flipflop clear high after 50uS to allow flipflops to be written
         Timer::after_micros(50).await;
@@ -140,7 +141,7 @@ impl<'a> MotorControllerInterface<'a> {
         //Pull buffer OE to low to put it into read mode
         self.output_enable.set_low();
         //Allow 100uS for it to stabilise its' state
-        Timer::after_micros(100).await;
+        Timer::after_micros(10).await;
         let mut byte = 0x00u8;
         for (bit_index, gpio) in self.bus.iter_mut().enumerate() {
             if gpio.is_high() {
@@ -270,19 +271,20 @@ impl<'a> MotorControllerInterface<'a> {
                 .wait_for_low()
                 .with_timeout(Duration::from_millis(1000))
                 .await;
-            self.output_enable.set_high();
-            Timer::after_millis(1).await;
+            
 
             if b.is_ok() {
                 debug!("Motor left home");
             } else {
                 error!("Motor did not leave home in time (1 sec)");
+
+                //Turn the buffer off again.
+                self.output_enable.set_high();
+                Timer::after_millis(1).await;
+                //Stop the motors
                 self.write_bytes([0x00, 0x00, 0x00]).await;
                 return Err(DispenseError::MotorStuckHome);
             }
-
-            self.output_enable.set_low();
-            Timer::after_millis(1).await;
 
             //Now the motor is moving, it has 3 seconds to return home to complete the vend cycles
             let b = self.bus[motor_home_gpio_index]
@@ -290,15 +292,18 @@ impl<'a> MotorControllerInterface<'a> {
                 .with_timeout(Duration::from_millis(3000))
                 .await;
 
+            //Buffer off.
             self.output_enable.set_high();
             Timer::after_millis(1).await;
+
+            //Motor off
+            self.write_bytes([0x00, 0x00, 0x00]).await;
 
             if b.is_ok() {
                 info!("Vend completed successfully");
                 Ok(())
             } else {
                 error!("Motor did not return home in time (3 sec)");
-                self.write_bytes([0x00, 0x00, 0x00]).await;
                 return Err(DispenseError::MotorStuckNotHome);
             }
         } else {
