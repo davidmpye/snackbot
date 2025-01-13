@@ -16,7 +16,7 @@ use embassy_usb::control::OutResponse;
 use embassy_usb::{Config as UsbConfig, Handler, UsbDevice};
 
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{AnyPin, Flex, Input, Level, Output, Pin, Pull};
+use embassy_rp::gpio::{OutputOpenDrain,AnyPin, Flex, Input, Level, Output, Pin, Pull};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
@@ -56,10 +56,10 @@ bind_interrupts!(struct Irqs {
 });
 
 pub struct MotorControllerInterface<'a> {
-    bus: [Flex<'a>; 8],
-    clks: [Output<'a>; 3],
-    output_enable: Output<'a>,
-    flipflop_clr: Output<'a>,
+    bus: [OutputOpenDrain<'a>; 8],
+    clks: [OutputOpenDrain<'a>; 3],
+    output_enable: OutputOpenDrain<'a>,
+    flipflop_clr: OutputOpenDrain<'a>,
 }
 
 impl<'a> MotorControllerInterface<'a> {
@@ -82,31 +82,25 @@ impl<'a> MotorControllerInterface<'a> {
     ) -> Self {
         let mut x = Self {
             bus: [
-                Flex::new(bus_pin0),
-                Flex::new(bus_pin1),
-                Flex::new(bus_pin2),
-                Flex::new(bus_pin3),
-                Flex::new(bus_pin4),
-                Flex::new(bus_pin5),
-                Flex::new(bus_pin6),
-                Flex::new(bus_pin7),
+                OutputOpenDrain::new(bus_pin0, Level::High),
+                OutputOpenDrain::new(bus_pin1, Level::High),
+                OutputOpenDrain::new(bus_pin2, Level::High),
+                OutputOpenDrain::new(bus_pin3, Level::High),
+                OutputOpenDrain::new(bus_pin4, Level::High),
+                OutputOpenDrain::new(bus_pin5, Level::High),
+                OutputOpenDrain::new(bus_pin6, Level::High),
+                OutputOpenDrain::new(bus_pin7, Level::High),
             ],
             clks: [
-                Output::new(clk_pin1, Level::Low),
-                Output::new(clk_pin2, Level::Low),
-                Output::new(clk_pin3, Level::Low),
+                OutputOpenDrain::new(clk_pin1, Level::High),
+                OutputOpenDrain::new(clk_pin2, Level::High),
+                OutputOpenDrain::new(clk_pin3, Level::High),
             ],
-            output_enable: Output::new(oe_pin, Level::High),
-            //Clear the flipflop data
-            flipflop_clr: Output::new(flipflop_clr_pin, Level::Low),
+            output_enable: OutputOpenDrain::new(oe_pin, Level::High),
+            flipflop_clr: OutputOpenDrain::new(flipflop_clr_pin, Level::Low),
         };
-        for pin in x.bus.iter_mut() {
-            pin.set_low();
-            pin.set_pull(Pull::None);
-            pin.set_as_input();
-
-        }
-        //Pull flipflop clear high after 50uS to allow flipflops to be written
+        
+        //Pull flipflop_clr high after 50uS to allow flipflops to be written
         Timer::after_micros(50).await;
         x.flipflop_clr.set_high();
         Timer::after_secs(1).await;
@@ -119,7 +113,6 @@ impl<'a> MotorControllerInterface<'a> {
             debug!("Writing out byte {=u8:#x}", byte);
             //write out the data
             for (bit_index, gpio) in self.bus.iter_mut().enumerate() {
-                gpio.set_as_output();
                 if byte & (0x01 << bit_index) == 0 {
                     gpio.set_low();
                 } else {
@@ -131,9 +124,10 @@ impl<'a> MotorControllerInterface<'a> {
             clk_pin.set_high();
             Timer::after_micros(10).await;
         }
-        //Put bus pins back into input mode
+
+        //Don't pull the pins low any more
         for gpio in self.bus.iter_mut() {
-            gpio.set_as_input();
+            gpio.set_high();
         }
     }
 
