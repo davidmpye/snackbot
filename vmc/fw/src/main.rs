@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 
-
 use embassy_sync::mutex::Mutex;
 
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -9,19 +8,17 @@ use defmt::*;
 
 use embassy_executor::Spawner;
 
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, signal::Signal};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, signal::Signal};
 
 use embassy_time::{Duration, Timer, WithTimeout};
 
-use embassy_usb::class::hid::{
-    HidReader, HidReaderWriter, HidWriter, ReportId, RequestHandler, State,
-};
+use embassy_usb::class::hid::{ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::{Config as UsbConfig, Handler, UsbDevice};
 
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{OutputOpenDrain,AnyPin, Flex, Input, Level, Output, Pin, Pull};
+use embassy_rp::gpio::{AnyPin, Input, Level, Output, OutputOpenDrain, Pin, Pull};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
@@ -56,8 +53,10 @@ type AppTx = WireTxImpl<ThreadModeRawMutex, AppDriver>;
 type AppRx = WireRxImpl<AppDriver>;
 type AppServer = Server<AppTx, AppRx, WireRxBuf, MyApp>;
 
-static MOTOR_CONTROLLER_INTERFACE: Mutex<CriticalSectionRawMutex,Option<MotorControllerInterface>> = Mutex::new(None);
-
+static MOTOR_CONTROLLER_INTERFACE: Mutex<
+    CriticalSectionRawMutex,
+    Option<MotorControllerInterface>,
+> = Mutex::new(None);
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
@@ -107,7 +106,7 @@ impl<'a> MotorControllerInterface<'a> {
             output_enable: OutputOpenDrain::new(oe_pin, Level::High),
             flipflop_clr: OutputOpenDrain::new(flipflop_clr_pin, Level::Low),
         };
-        
+
         //Pull flipflop_clr high after 50uS to allow flipflops to be written
         Timer::after_micros(50).await;
         x.flipflop_clr.set_high();
@@ -192,7 +191,7 @@ impl<'a> MotorControllerInterface<'a> {
         let mut drive_bytes: [u8; 3] = [0x00; 3];
 
         //Check row and col are calculable - note, NOT whether they are present in the machine
-        if !row.is_ascii_uppercase()  || row < 'A' || row > 'G' {
+        if !row.is_ascii_uppercase() || row < 'A' || row > 'G' {
             return None;
         }
 
@@ -253,7 +252,7 @@ impl<'a> MotorControllerInterface<'a> {
                 'E' => 4, //0x10u8
                 'F' => 6, //0x40u8,
                 _ => {
-                    if col.to_digit(10).unwrap_or (0) % 2  == 0 {
+                    if col.to_digit(10).unwrap_or(0) % 2 == 0 {
                         0 //0x01
                     } else {
                         1 //0x02u8
@@ -270,7 +269,7 @@ impl<'a> MotorControllerInterface<'a> {
                 .wait_for_low()
                 .with_timeout(Duration::from_millis(1000))
                 .await;
-            
+
             if b.is_ok() {
                 debug!("Motor left home");
             } else {
@@ -370,8 +369,8 @@ async fn main(spawner: Spawner) {
     //We use init_without_build because init consumes the driver, and creates (and doesn't return) a builder otherwise
     let (mut builder, tx_impl, rx_impl) =
         STORAGE.init_without_build(driver, config, pbufs.tx_buf.as_mut_slice());
-        let device_handler = DEVICE_HANDLER.init(MyDeviceHandler::new());
-        builder.handler(device_handler);
+    let device_handler = DEVICE_HANDLER.init(MyDeviceHandler::new());
+    builder.handler(device_handler);
 
     let context = Context {};
 
@@ -387,7 +386,7 @@ async fn main(spawner: Spawner) {
     );
 
     {
-        let interface =      MotorControllerInterface::new(
+        let interface = MotorControllerInterface::new(
             //bus pins
             p.PIN_0.degrade(),
             p.PIN_1.degrade(),
@@ -405,7 +404,8 @@ async fn main(spawner: Spawner) {
             p.PIN_11.degrade(),
             //clr pin
             p.PIN_12.degrade(),
-        ).await;
+        )
+        .await;
         //Move interface into the mutex
         let mut m = MOTOR_CONTROLLER_INTERFACE.lock().await;
         *m = Some(interface);
