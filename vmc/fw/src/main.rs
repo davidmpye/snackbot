@@ -108,6 +108,7 @@ impl<'a> MotorControllerInterface<'a> {
         //Pull flipflop clear high after 50uS to allow flipflops to be written
         Timer::after_micros(50).await;
         x.flipflop_clr.set_high();
+        Timer::after_secs(1).await;
 
         x
     }
@@ -191,7 +192,7 @@ impl<'a> MotorControllerInterface<'a> {
         if !row.is_ascii() || row < 'A' || row > 'G' {
             return None;
         }
-        if !col.is_ascii() || col < '0' || col > '9' {
+        if !col.is_ascii_digit() || col < '0' || col > '9' {
             return None;
         }
 
@@ -248,7 +249,7 @@ impl<'a> MotorControllerInterface<'a> {
                 'E' => 4, //0x10u8
                 'F' => 6, //0x40u8,
                 _ => {
-                    if (col as u8 - b'0') / 2 == 0 {
+                    if col.to_digit(10).unwrap_or (0) % 2  == 0 {
                         0 //0x01
                     } else {
                         1 //0x02u8
@@ -261,10 +262,17 @@ impl<'a> MotorControllerInterface<'a> {
 
             //Now start watching for the motor to leave home
             debug!("Waiting for motor to leave home");
+            self.output_enable.set_low();
+            //Buffer seems to need time to 'settle'
+            Timer::after_millis(1).await;
+
             let b = self.bus[motor_home_gpio_index]
                 .wait_for_low()
                 .with_timeout(Duration::from_millis(1000))
                 .await;
+            self.output_enable.set_high();
+            Timer::after_millis(1).await;
+
             if b.is_ok() {
                 debug!("Motor left home");
             } else {
@@ -273,11 +281,18 @@ impl<'a> MotorControllerInterface<'a> {
                 return Err(DispenseError::MotorStuckHome);
             }
 
+            self.output_enable.set_low();
+            Timer::after_millis(1).await;
+
             //Now the motor is moving, it has 3 seconds to return home to complete the vend cycles
             let b = self.bus[motor_home_gpio_index]
                 .wait_for_high()
                 .with_timeout(Duration::from_millis(3000))
                 .await;
+
+            self.output_enable.set_high();
+            Timer::after_millis(1).await;
+
             if b.is_ok() {
                 info!("Vend completed successfully");
                 Ok(())
@@ -396,7 +411,7 @@ async fn main(spawner: Spawner) {
     )
     .await;
 
-    x.dispense('B', '2').await;
+    x.dispense('A', '0').await;
 
     //Postcard server mainloop just runs here
     loop {
