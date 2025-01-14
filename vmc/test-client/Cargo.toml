@@ -1,0 +1,11 @@
+[package]
+name = "test-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nusb = "0.1.12"
+postcard-rpc = { version = "0.11.3", features = ["use-std", "raw-nusb" ] }
+postcard-schema = "0.2.0"
+tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread", "time"] }
+vmc-icd = { version = "0.1.0", path = "../vmc-icd" }

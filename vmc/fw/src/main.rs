@@ -342,8 +342,7 @@ define_dispatch! {
 
 async fn dispense_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenseResult {
     let mut c = MOTOR_CONTROLLER_INTERFACE.lock().await;
-    c.as_mut().expect("Motor controller missing from mutex").dispense(address.row, address.col).await?;
-    Ok(())
+    c.as_mut().expect("Motor controller missing from mutex").dispense(address.row, address.col).await
 }
 
 #[embassy_executor::main]
@@ -433,7 +432,6 @@ async fn main(spawner: Spawner) {
         let i = x.as_mut().expect("Motor controller not in mutex!");
         let _ = i.dispense('C', '3').await;
     }
-
 
     //Postcard server mainloop just runs here
     loop {
