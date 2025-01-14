@@ -13,8 +13,8 @@ pub struct ChillerStatus {
 
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
 pub struct DispenserAddress {
-    row: char,
-    column: char,
+    pub row: char,
+    pub col: char,
 }
 
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
@@ -26,10 +26,9 @@ pub enum DispenserType {
 //Information about a dispenser at a particular address
 //Will return None if the motor is not present
 pub type DispenserOption = Option<Dispenser>;
-
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
 pub struct Dispenser {
-    address: DispenserAddress,
+//    address: DispenserAddress,
     dispenser_type: DispenserType,
     status: DispenserStatus,
 }
@@ -59,7 +58,6 @@ pub enum DispenseError {
 endpoints! {
     list = ENDPOINT_LIST;
     omit_std = true;
-
     | EndpointTy              | RequestTy        | ResponseTy           | Path              |
     | ----------              | ---------        | ----------           | ----              |
     | GetChillerStatus        | ()               | ChillerStatus        | "chillerstatus"   |

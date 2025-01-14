@@ -9,7 +9,7 @@ use defmt::*;
 use embassy_executor::Spawner;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex};
 
 use embassy_time::{Duration, Timer, WithTimeout};
 
@@ -25,6 +25,11 @@ use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandl
 
 use static_cell::{ConstStaticCell, StaticCell};
 
+use vmc_icd::{
+    Dispense, DispenserAddress, DispenseError, DispenseResult, DispenserOption, ForceDispense, GetDispenserInfo,
+    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+};
+
 use postcard_rpc::{
     define_dispatch,
     header::VarHeader,
@@ -35,11 +40,6 @@ use postcard_rpc::{
         },
         Dispatch, Sender, Server,
     },
-};
-
-use vmc_icd::{
-    Dispense, DispenseError, DispenseResult, DispenserOption, ForceDispense, GetDispenserInfo,
-    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
 };
 
 use {defmt_rtt as _, panic_probe as _};
@@ -325,9 +325,10 @@ define_dispatch! {
 
     endpoints: {
         list: ENDPOINT_LIST;
+
         | EndpointTy                | kind        | handler                     |
         | ----------                | ----        | -------                     |
-
+        | Dispense                  | async       | dispense_handler            |
     };
     topics_in: {
         list: TOPICS_IN_LIST;
@@ -337,6 +338,12 @@ define_dispatch! {
     topics_out: {
         list: TOPICS_OUT_LIST;
     };
+}
+
+async fn dispense_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenseResult {
+    let mut c = MOTOR_CONTROLLER_INTERFACE.lock().await;
+    c.as_mut().expect("Motor controller missing from mutex").dispense(address.row, address.col).await?;
+    Ok(())
 }
 
 #[embassy_executor::main]
@@ -358,11 +365,7 @@ async fn main(spawner: Spawner) {
     config.device_protocol = 0x01;
     config.composite_with_iads = true;
 
-    let request_handler = MyRequestHandler {};
     static DEVICE_HANDLER: StaticCell<MyDeviceHandler> = StaticCell::new();
-
-    static STATE: StaticCell<State> = StaticCell::new();
-    let state = STATE.init(State::new());
 
     let pbufs = PBUFS.take();
 
@@ -385,27 +388,27 @@ async fn main(spawner: Spawner) {
         vkk,
     );
 
+    let interface = MotorControllerInterface::new(
+        //bus pins
+        p.PIN_0.degrade(),
+        p.PIN_1.degrade(),
+        p.PIN_2.degrade(),
+        p.PIN_3.degrade(),
+        p.PIN_4.degrade(),
+        p.PIN_5.degrade(),
+        p.PIN_6.degrade(),
+        p.PIN_7.degrade(),
+        //clk pins
+        p.PIN_8.degrade(),
+        p.PIN_9.degrade(),
+        p.PIN_10.degrade(),
+        //oe pin
+        p.PIN_11.degrade(),
+        //clr pin
+        p.PIN_12.degrade(),
+    ).await;
+    
     {
-        let interface = MotorControllerInterface::new(
-            //bus pins
-            p.PIN_0.degrade(),
-            p.PIN_1.degrade(),
-            p.PIN_2.degrade(),
-            p.PIN_3.degrade(),
-            p.PIN_4.degrade(),
-            p.PIN_5.degrade(),
-            p.PIN_6.degrade(),
-            p.PIN_7.degrade(),
-            //clk pins
-            p.PIN_8.degrade(),
-            p.PIN_9.degrade(),
-            p.PIN_10.degrade(),
-            //oe pin
-            p.PIN_11.degrade(),
-            //clr pin
-            p.PIN_12.degrade(),
-        )
-        .await;
         //Move interface into the mutex
         let mut m = MOTOR_CONTROLLER_INTERFACE.lock().await;
         *m = Some(interface);
@@ -420,8 +423,17 @@ async fn main(spawner: Spawner) {
     {
         //Unlock the mutex and drive the dispenser
         let mut x = MOTOR_CONTROLLER_INTERFACE.lock().await;
-        let _ = x.as_mut().unwrap().dispense('A', '0').await;
+        let i = x.as_mut().expect("Motor controller not in mutex!");
+        let _ = i.dispense('A', '0').await;
     }
+
+    {
+        //Unlock the mutex and drive the dispenser
+        let mut x = MOTOR_CONTROLLER_INTERFACE.lock().await;
+        let i = x.as_mut().expect("Motor controller not in mutex!");
+        let _ = i.dispense('C', '3').await;
+    }
+
 
     //Postcard server mainloop just runs here
     loop {
