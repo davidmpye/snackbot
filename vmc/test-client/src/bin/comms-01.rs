@@ -1,12 +1,13 @@
-use std::time::Duration;
+use std::{io::Read, time::Duration};
 
 use tokio::time::interval;
 use test_client::{client::WorkbookClient, read_line};
 
 use vmc_icd::{DispenserAddress};
-
+use std::io::{stdout, stdin, Write};
 #[tokio::main]
 pub async fn main() {
+
     let client = WorkbookClient::new();
 
     tokio::select! {
@@ -20,13 +21,45 @@ pub async fn main() {
 }
 
 async fn run(client: &WorkbookClient) {
-    let mut ticker = interval(Duration::from_millis(250));
 
-    ticker.tick().await;
-    print!("Check connectivity with ping: 42... ");
-    let res = client.ping(42).await.unwrap();
-    println!("got {res}!");
-    
+
+
+    let mut buf:[u8;64] = [0x00;64];
+
+    let mut got_row = false;
+    let mut got_col = false;
+
+    let mut row:char = 'A';
+    let mut col: char = '0';
+
+    loop {
+            
+        let bytes = stdin().read(&mut buf);
+        if let Ok(count) = bytes {
+            
+            for c in &buf[0..count] {
+                if c.is_ascii_uppercase() {
+                    row = *c as char;
+                    got_row = true;
+                } 
+                else if c.is_ascii_digit() {
+                    col = *c as char;
+                    got_col = true;
+                }
+
+                if got_row && got_col {
+
+                    println!("DOING IT");
+                    let item = DispenserAddress { row: row as char, col: col as char};
+                    let res = client.dispense(item).await.unwrap();
+
+                    got_row = false;
+                    got_col = false;
+                }
+            }
+        }
+    }
+
     loop {
         print!("Please enter command: (VEND)");
         let l = read_line().await;
