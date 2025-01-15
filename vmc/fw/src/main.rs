@@ -140,26 +140,21 @@ impl<'a> MotorControllerInterface<'a> {
         }
     }
 
-    fn calc_drive_bytes(row: char, col: char) -> Option<[u8; 3]> {
+    fn calc_drive_bytes(row: char, col: char) -> Result<[u8; 3], ()> {
         /*
         Wiring is as follows
 
-        U2:
-        0x01 - Row E Even
-        0x02 - Row E Odd
-        0x04 - Row F Even
-        0x08 - Row F Odd
-
-        U3:
-        0x01 - Cols 0,1
-        0x02 - Cols 2,3
-        0x04 - Cols 4,5
-        0x08 - Cols 6,7
-        0x10 - Cols 8,9
-
-        Rows are wired as follows:
+        U2:                     U3:
+        ===============         ===============
+        0x01 - Row E Even       0x01 - Cols 0,1
+        0x02 - Row E Odd        0x02 - Cols 2,3
+        0x04 - Row F Even       0x04 - Cols 4,5
+        0x08 - Row F Odd        0x08 - Cols 6,7
+                                0x10 - Cols 8,9
+                                0x20 - Row G (there's no odd!) - Gum and mint row drive (if fitted)
 
         U4:
+        ===============
         0x01 - Row A Even
         0x02 - Row A Odd
         0x04 - Row B Even
@@ -169,18 +164,16 @@ impl<'a> MotorControllerInterface<'a> {
         0x40 - Row D Even
         0x80 - Row D Odd
 
-        U3:
-        0x20 - Row G (there's no odd!) - Gum and mint row drive (if fitted)
         */
         let mut drive_bytes: [u8; 3] = [0x00; 3];
 
         //Check row and col are calculable - note, NOT whether they are present in the machine
         if !row.is_ascii_uppercase() || row < 'A' || row > 'G' {
-            return None;
+            return Err(());
         }
 
         if !col.is_ascii_digit() {
-            return None;
+            return Err(());
         }
 
         let row_offset = row as u8 - b'A';
@@ -222,7 +215,7 @@ impl<'a> MotorControllerInterface<'a> {
             "Calculated drive byte for {}{} as {=[u8]:#04x}",
             row, col, drive_bytes
         );
-        Some(drive_bytes)
+        Ok(drive_bytes)
     }
 
     pub fn motor_homed_gpio_index(row: char, col: char) -> usize {
@@ -243,7 +236,7 @@ impl<'a> MotorControllerInterface<'a> {
     //Is the motor home at this precise moment in time?
     pub async fn is_home(&mut self, row: char, col: char) -> bool {
         let mut homed = false;
-        if let Some(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row, col) {
+        if let Ok(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row, col) {
             //Send the bytes to the motor driver
             self.write_bytes(drive_bytes).await;
             self.output_enable.set_low();
@@ -259,7 +252,7 @@ impl<'a> MotorControllerInterface<'a> {
 
     pub async fn dispense(&mut self, row: char, col: char) -> DispenseResult {
         if ! self.is_home(row, col).await {
-            info!("Refusing to dispense item - motor not home at start of vend");
+            error!("Refusing to dispense item - motor not home at start of vend");
             return Err(DispenseError::MotorNotHome);
         }
         self.force_dispense(row, col).await
@@ -267,7 +260,7 @@ impl<'a> MotorControllerInterface<'a> {
 
     pub async fn force_dispense (&mut self, row: char, col: char) -> DispenseResult {
         debug!("Driving dispense motor at {}{}", row, col);
-        if let Some(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row, col) {
+        if let Ok(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row, col) {
             //Send the bytes to the motor driver
             self.write_bytes(drive_bytes).await;
 
@@ -278,7 +271,7 @@ impl<'a> MotorControllerInterface<'a> {
             self.output_enable.set_low();
             //Buffer seems to need time to 'settle'
             Timer::after_micros(20).await;
-            
+
             let b = self.bus[home_gpio_index]
                     .wait_for_falling_edge()
                     .with_timeout(Duration::from_millis(1500))
