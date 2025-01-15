@@ -17,28 +17,36 @@ pub struct DispenserAddress {
     pub col: char,
 }
 
+//Information about a dispenser at a particular address
+//Will return None if the motor is not present
+pub type DispenserOption = Option<Dispenser>;
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
+pub struct Dispenser {
+    pub address: DispenserAddress,
+    pub dispenser_type: DispenserType,
+    pub motor_status: MotorStatus,
+    pub can_status: Option<CanStatus>,
+}
+
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
 pub enum DispenserType {
     Spiral,
     Can,
 }
 
-//Information about a dispenser at a particular address
-//Will return None if the motor is not present
-pub type DispenserOption = Option<Dispenser>;
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
-pub struct Dispenser {
-//    address: DispenserAddress,
-    dispenser_type: DispenserType,
-    status: DispenserStatus,
+pub enum MotorStatus {
+    Ok,
+    MotorNotHome,
+    Unknown,
+    //If motor not present, Dispenser Option would just be None
 }
 
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
-pub enum DispenserStatus {
+pub enum CanStatus {
     Ok,
-    MotorNotHome,
-    OneOrNoCansLeft, 
-    //If motor not present, Dispenser Option would just be None
+    LastCan,
+    Unknown,
 }
 
 //The result of attempting a vend operation
