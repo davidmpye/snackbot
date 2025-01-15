@@ -325,7 +325,7 @@ impl<'a> MotorDriver<'a> {
         Timer::after_micros(20).await;
 
         let b = self.bus[home_gpio_index]
-            .wait_for_falling_edge()
+            .wait_for_low()
             .with_timeout(Duration::from_millis(1000))
             .await;
 
@@ -340,10 +340,13 @@ impl<'a> MotorDriver<'a> {
             return Err(DispenseError::MotorStuckHome);
         }
 
+        //Avoid issue with bouncing microswitch contacts
+        Timer::after_millis(500).await;
+
         //Now the motor is moving, it has 3 seconds to return home to complete the vend cycles
         let b = self.bus[home_gpio_index]
-            .wait_for_rising_edge()
-            .with_timeout(Duration::from_millis(3000))
+            .wait_for_high()
+            .with_timeout(Duration::from_millis(2500))
             .await;
 
         //Buffer off.
