@@ -76,8 +76,37 @@ async fn run(client: &WorkbookClient) {
                 }
             }
             "STATUS" => {
+                if parts.len() == 2 {
+                    let address = parts[1].as_bytes();
+                    if address.len() == 2 {
+                        let item = DispenserAddress { row: address[0] as char, col: address[1] as char};
+                        let res = client.dispenser_status(item).await.unwrap();
+                        match res {
+                            Some(x) => println!("{:?}", x),
+                            _=> println!("Err"),
+                        }
+                    }
+                    else {
+                        println!("Address format should be 2 characters eg A0");
+                    }
+                }
+                else {
+                    println!("No address specified");
+                }
 
             },
+            "MAP" => {
+                //prod all possible addresses
+                for row in 'A'..'G' {
+                    for col in '0'..'9' {
+                        let disp = client.dispenser_status(DispenserAddress {row: row, col: col}).await;
+                        match disp.unwrap() {
+                            Some (d) => println!("{:?}",d),
+                            _ => {},
+                        }
+                    }
+                }
+            }
             _ => {},
         };
     

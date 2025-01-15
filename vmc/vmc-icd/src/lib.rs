@@ -11,7 +11,8 @@ pub struct ChillerStatus {
     chiller_duty_cycle: u8,  //Averaged over preceding 24 hours as a %
 }
 
-#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
+
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq, Copy, Clone)]
 pub struct DispenserAddress {
     pub row: char,
     pub col: char,
@@ -38,7 +39,6 @@ pub enum DispenserType {
 pub enum MotorStatus {
     Ok,
     MotorNotHome,
-    Unknown,
     //If motor not present, Dispenser Option would just be None
 }
 
@@ -46,7 +46,6 @@ pub enum MotorStatus {
 pub enum CanStatus {
     Ok,
     LastCan,
-    Unknown,
 }
 
 //The result of attempting a vend operation
@@ -68,8 +67,6 @@ endpoints! {
     omit_std = true;
     | EndpointTy              | RequestTy        | ResponseTy           | Path              |
     | ----------              | ---------        | ----------           | ----              |
-    | GetChillerStatus        | ()               | ChillerStatus        | "chillerstatus"   |
-    | SetChillerTemp          | f32              | bool                 | "setchillertemp"  |
     | GetDispenserInfo        | DispenserAddress | DispenserOption      | "dispenserinfo"   |   //Get current state of dispenser at a row/col address
     | Dispense                | DispenserAddress | DispenseResult       | "dispence"        |
     | ForceDispense           | DispenserAddress | DispenseResult       | "forcedispense"   |   //Attempt vend regardless of initial state

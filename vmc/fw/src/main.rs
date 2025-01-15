@@ -96,19 +96,19 @@ define_dispatch! {
 
 async fn dispense_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenseResult {
     let mut c = MOTOR_DRIVER.lock().await;
-    c.as_mut().expect("Motor controller missing from mutex").dispense(address.row, address.col).await
+    c.as_mut().expect("Motor controller missing from mutex").dispense(address).await
 }
 
 async fn force_dispense_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenseResult {
     let mut c = MOTOR_DRIVER.lock().await;
-    c.as_mut().expect("Motor controller missing from mutex").force_dispense(address.row, address.col).await
+    c.as_mut().expect("Motor controller missing from mutex").force_dispense(address).await
 }
 
 async fn get_dispenser_info_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenserOption {
     let mut c = MOTOR_DRIVER.lock().await;
- //   c.as_mut().expect("Motor controller missing from mutex").dispenser_info(address.row, address.col).await
- None
+    c.as_mut().expect("Motor controller missing from mutex").getDispenser(address).await
 }
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());

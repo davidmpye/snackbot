@@ -5,7 +5,7 @@ use postcard_rpc::{
 };
 use std::convert::Infallible;
 use vmc_icd::{
-    Dispense, DispenseError, DispenseResult, DispenserAddress, ForceDispense
+    Dispense, DispenseError, DispenseResult, DispenserAddress, ForceDispense, GetDispenserInfo, DispenserOption
 };
 
 pub struct WorkbookClient {
@@ -69,6 +69,12 @@ impl WorkbookClient {
         let result = self.client.send_resp::<ForceDispense>(&x).await?;
         Ok(result)
     }
+
+    pub async fn dispenser_status(&self, x: DispenserAddress) -> Result<DispenserOption, WorkbookError<Infallible>> {
+        let result = self.client.send_resp::<GetDispenserInfo>(&x).await?;
+        Ok(result)
+    }
+
 }
 
 impl Default for WorkbookClient {
