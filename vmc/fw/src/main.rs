@@ -104,13 +104,14 @@ impl<'a> MotorControllerInterface<'a> {
                 OutputOpenDrain::new(clk_pin3, Level::High),
             ],
             output_enable: OutputOpenDrain::new(oe_pin, Level::High),
-            flipflop_clr: OutputOpenDrain::new(flipflop_clr_pin, Level::Low),
+            flipflop_clr: OutputOpenDrain::new(flipflop_clr_pin, Level::High),
         };
 
         //Pull flipflop_clr high after 50uS to allow flipflops to be written
         Timer::after_micros(50).await;
+        x.flipflop_clr.set_low();
+        Timer::after_micros(50).await;
         x.flipflop_clr.set_high();
-        Timer::after_secs(1).await;
 
         x
     }
@@ -118,6 +119,7 @@ impl<'a> MotorControllerInterface<'a> {
     async fn write_bytes(&mut self, bytes: [u8; 3]) {
         for (clk_pin, byte) in core::iter::zip(self.clks.iter_mut(), bytes.iter()) {
             debug!("Writing out byte {=u8:#x}", byte);
+
             //write out the data
             for (bit_index, gpio) in self.bus.iter_mut().enumerate() {
                 if byte & (0x01 << bit_index) == 0 {
@@ -127,33 +129,15 @@ impl<'a> MotorControllerInterface<'a> {
                 }
             }
             clk_pin.set_low();
-            Timer::after_micros(10).await;
+            Timer::after_micros(1).await;
             clk_pin.set_high();
-            Timer::after_micros(10).await;
+            Timer::after_micros(1).await;
         }
 
         //Don't pull the pins low any more
         for gpio in self.bus.iter_mut() {
             gpio.set_high();
         }
-    }
-
-    async fn read_byte(&mut self) -> u8 {
-        //Pull buffer OE to low to put it into read mode
-        self.output_enable.set_low();
-        //Allow 100uS for it to stabilise its' state
-        Timer::after_micros(10).await;
-        let mut byte = 0x00u8;
-        for (bit_index, gpio) in self.bus.iter_mut().enumerate() {
-            if gpio.is_high() {
-                byte |= 0x01 << bit_index;
-            }
-        }
-        //Return buffer to write mode
-        self.output_enable.set_high();
-        Timer::after_micros(100).await;
-        debug!("Read byte is {=u8:#x}", byte);
-        byte
     }
 
     fn calc_drive_bytes(row: char, col: char) -> Option<[u8; 3]> {
@@ -241,57 +225,86 @@ impl<'a> MotorControllerInterface<'a> {
         Some(drive_bytes)
     }
 
+    pub fn motor_homed_gpio_index(row: char, col: char) -> usize {
+        //Helper function to give us the bus gpio index to see motor home status
+        match row {
+            'E' => 4, //0x10u8
+            'F' => 6, //0x40u8,
+            _ => {
+                if col.to_digit(10).unwrap_or(0) % 2 == 0 {
+                    0 //0x01
+                } else {
+                    1 //0x02u8
+                }
+            }
+        }
+    }
+    
+    //Is the motor home at this precise moment in time?
+    pub async fn is_home(&mut self, row: char, col: char) -> bool {
+        let mut homed = false;
+        if let Some(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row, col) {
+            //Send the bytes to the motor driver
+            self.write_bytes(drive_bytes).await;
+            self.output_enable.set_low();
+            //Buffer seems to need time to 'settle'
+            Timer::after_micros(20).await;
+            homed = self.bus[MotorControllerInterface::motor_homed_gpio_index(row, col)].is_high();
+            self.output_enable.set_high();
+            Timer::after_micros(20).await;
+            self.write_bytes([0x00,0x00,0x00]).await;
+        }
+        homed
+    }
+
     pub async fn dispense(&mut self, row: char, col: char) -> DispenseResult {
-        info!("Driving dispense motor at {}{}", row, col);
+        if ! self.is_home(row, col).await {
+            info!("Refusing to dispense item - motor not home at start of vend");
+            return Err(DispenseError::MotorNotHome);
+        }
+        self.force_dispense(row, col).await
+    }
+
+    pub async fn force_dispense (&mut self, row: char, col: char) -> DispenseResult {
+        debug!("Driving dispense motor at {}{}", row, col);
         if let Some(drive_bytes) = MotorControllerInterface::calc_drive_bytes(row, col) {
             //Send the bytes to the motor driver
             self.write_bytes(drive_bytes).await;
 
-            //Calculate which GPIO we need to watch to see the motor's home status
-            let motor_home_gpio_index = match row {
-                'E' => 4, //0x10u8
-                'F' => 6, //0x40u8,
-                _ => {
-                    if col.to_digit(10).unwrap_or(0) % 2 == 0 {
-                        0 //0x01
-                    } else {
-                        1 //0x02u8
-                    }
-                }
-            };
-            debug!("Motor homed gpio index is is {=u8}", motor_home_gpio_index);
+            let home_gpio_index = MotorControllerInterface::motor_homed_gpio_index(row, col);
+            debug!("Motor homed gpio index is is {}", home_gpio_index);
             debug!("Waiting for motor to leave home");
+        
             self.output_enable.set_low();
             //Buffer seems to need time to 'settle'
-            Timer::after_millis(1).await;
-
-            let b = self.bus[motor_home_gpio_index]
-                .wait_for_low()
-                .with_timeout(Duration::from_millis(1000))
-                .await;
+            Timer::after_micros(20).await;
+            
+            let b = self.bus[home_gpio_index]
+                    .wait_for_falling_edge()
+                    .with_timeout(Duration::from_millis(1500))
+                    .await;
 
             if b.is_ok() {
                 debug!("Motor left home");
             } else {
                 error!("Motor did not leave home in time (1 sec)");
-
                 //Turn the buffer off again.
                 self.output_enable.set_high();
-                Timer::after_millis(1).await;
+                Timer::after_micros(20).await;
                 //Stop the motors
                 self.write_bytes([0x00, 0x00, 0x00]).await;
                 return Err(DispenseError::MotorStuckHome);
             }
 
             //Now the motor is moving, it has 3 seconds to return home to complete the vend cycles
-            let b = self.bus[motor_home_gpio_index]
-                .wait_for_high()
-                .with_timeout(Duration::from_millis(3000))
+            let b = self.bus[home_gpio_index]
+                .wait_for_rising_edge()
+                .with_timeout(Duration::from_millis(3500))
                 .await;
 
             //Buffer off.
             self.output_enable.set_high();
-            Timer::after_millis(1).await;
+            Timer::after_micros(20).await;
 
             //Motor off
             self.write_bytes([0x00, 0x00, 0x00]).await;
@@ -308,6 +321,7 @@ impl<'a> MotorControllerInterface<'a> {
             return Err(DispenseError::InvalidAddress);
         }
     }
+
 }
 
 pub struct Context {
@@ -329,6 +343,7 @@ define_dispatch! {
         | EndpointTy                | kind        | handler                     |
         | ----------                | ----        | -------                     |
         | Dispense                  | async       | dispense_handler            |
+        | ForceDispense             | async       | force_dispense_handler       |
     };
     topics_in: {
         list: TOPICS_IN_LIST;
@@ -343,6 +358,11 @@ define_dispatch! {
 async fn dispense_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenseResult {
     let mut c = MOTOR_CONTROLLER_INTERFACE.lock().await;
     c.as_mut().expect("Motor controller missing from mutex").dispense(address.row, address.col).await
+}
+
+async fn force_dispense_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenseResult {
+    let mut c = MOTOR_CONTROLLER_INTERFACE.lock().await;
+    c.as_mut().expect("Motor controller missing from mutex").force_dispense(address.row, address.col).await
 }
 
 #[embassy_executor::main]
@@ -418,20 +438,6 @@ async fn main(spawner: Spawner) {
 
     //USB device handler task
     spawner.must_spawn(usb_task(usb));
-
-    {
-        //Unlock the mutex and drive the dispenser
-        let mut x = MOTOR_CONTROLLER_INTERFACE.lock().await;
-        let i = x.as_mut().expect("Motor controller not in mutex!");
-        let _ = i.dispense('A', '0').await;
-    }
-
-    {
-        //Unlock the mutex and drive the dispenser
-        let mut x = MOTOR_CONTROLLER_INTERFACE.lock().await;
-        let i = x.as_mut().expect("Motor controller not in mutex!");
-        let _ = i.dispense('C', '3').await;
-    }
 
     //Postcard server mainloop just runs here
     loop {

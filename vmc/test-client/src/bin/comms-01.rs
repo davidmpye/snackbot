@@ -54,6 +54,27 @@ async fn run(client: &WorkbookClient) {
                     println!("No address specified");
                 }
             }, 
+            "FORCE" => {
+                if parts.len() == 2 {
+                    let address = parts[1].as_bytes();
+                    if address.len() == 2 {
+                        let item = DispenserAddress { row: address[0] as char, col: address[1] as char};
+                        let res = client.force_dispense(item).await.unwrap();
+                        if res.is_ok() {
+                            print!("Vend successful");
+                        }
+                        else {
+                            println!("Vend failed: {:?}", res.err());
+                        }
+                    }
+                    else {
+                        println!("Address format should be 2 characters eg A0");
+                    }
+                }
+                else {
+                    println!("No address specified");
+                }
+            }
             "STATUS" => {
 
             },
