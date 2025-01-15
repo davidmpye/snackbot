@@ -4,7 +4,8 @@ use tokio::time::interval;
 use test_client::{client::WorkbookClient, read_line};
 
 use vmc_icd::{DispenserAddress};
-use std::io::{stdout, stdin, Write};
+use console;
+
 #[tokio::main]
 pub async fn main() {
 
@@ -32,22 +33,26 @@ async fn run(client: &WorkbookClient) {
     let mut row:char = 'A';
     let mut col: char = '0';
 
-    loop {
-            
-        let bytes = stdin().read(&mut buf);
-        if let Ok(count) = bytes {
-            
-            for c in &buf[0..count] {
-                if c.is_ascii_uppercase() {
-                    row = *c as char;
+    let cons = console::Term::stdout();
+/* 
+    loop { 
+        match cons.read_char() {
+            Ok(c) => {
+
+                if c.is_alphabetic() {
+                    let r = c.to_ascii_uppercase() ;
+                    row = r;
                     got_row = true;
-                } 
+                }
                 else if c.is_ascii_digit() {
-                    col = *c as char;
+                    let col = c;
                     got_col = true;
                 }
+            },
+            _=> {},
 
-                if got_row && got_col {
+        }       
+        if got_row && got_col {
 
                     println!("DOING IT");
                     let item = DispenserAddress { row: row as char, col: col as char};
@@ -56,10 +61,9 @@ async fn run(client: &WorkbookClient) {
                     got_row = false;
                     got_col = false;
                 }
-            }
-        }
+            
     }
-
+*/
     loop {
         print!("Please enter command: (VEND)");
         let l = read_line().await;
