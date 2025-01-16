@@ -7,7 +7,6 @@ use vmc_driver::VmcDriver;
 const KEYBOARD_DEVICE_NAME:&str = "keyboard";
 const VMC_DEVICE_NAME:&str = "vmc";
 
-
 #[tokio::main]
 async fn main() {
     println!("VMC Host initialising");
@@ -22,7 +21,7 @@ async fn main() {
 
     match VmcDriver::new(VMC_DEVICE_NAME) {
         Ok(mut driver) => {
-            println!("Connected to VMC - mapping");
+            println!("Connected to VMC - mapping machine");
             println!("{:?}", driver.map_machine().await);
         },
         Err(msg) => {
