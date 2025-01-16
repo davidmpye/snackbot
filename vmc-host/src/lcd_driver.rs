@@ -9,12 +9,12 @@ use keyboard_icd::{SetBacklight, SetText};
 use std::convert::Infallible;
 
 #[derive(Debug)]
-pub enum ClientError<E> {
+pub enum LcdClientError<E> {
     Comms(HostErr<WireError>),
     Endpoint(E),
 }
 
-impl<E> From<HostErr<WireError>> for ClientError<E> {
+impl<E> From<HostErr<WireError>> for LcdClientError<E> {
     fn from(value: HostErr<WireError>) -> Self {
         Self::Comms(value)
     }
@@ -52,7 +52,7 @@ impl LcdDriver {
         }
     }
 
-    pub async fn set_backlight(&mut self, on: bool) -> Result<(), ClientError<Infallible>> {
+    pub async fn set_backlight(&mut self, on: bool) -> Result<(), LcdClientError<Infallible>> {
         let _res = self.driver.send_resp::<SetBacklight>(&on).await?;
         Ok(())
     }
@@ -61,7 +61,7 @@ impl LcdDriver {
         &mut self,
         line1: String,
         line2: String,
-    ) -> Result<(), ClientError<Infallible>> {
+    ) -> Result<(), LcdClientError<Infallible>> {
         let mut l1_copy = line1;
         l1_copy.truncate(32);
         let mut l2_copy = line2;
