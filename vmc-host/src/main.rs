@@ -10,7 +10,7 @@ async fn main() {
     println!("VMC Host initialising");
     match LcdDriver::new("keyboard") {
         Ok(mut driver) => {
-            let _ = driver.set_text(String::from("GOOD MORNING"), String::from("VIETNAM")).await;
+            let _ = driver.set_text(String::from("Snackbot"), String::from("Makerspace Vending Solutions")).await;
         },
         Err(msg) => {
             println!("Unable to connect to Keyboard LCD display driver:  {}", msg);
