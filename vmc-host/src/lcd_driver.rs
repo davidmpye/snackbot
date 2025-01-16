@@ -25,9 +25,9 @@ pub struct LcdDriver {
 }
 
 impl LcdDriver {
-    pub fn new() -> Result<Self, String> {
+    pub fn new(devicename: &str) -> Result<Self, String> {
         match HostClient::try_new_raw_nusb(
-            |c| c.product_string() == Some("keyboard"),
+            |c| c.product_string() == Some(devicename),
             ERROR_PATH,
             8,
             VarSeqKind::Seq2,
