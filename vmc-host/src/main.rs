@@ -4,11 +4,14 @@ use lcd_driver::LcdDriver;
 mod vmc_driver;
 use vmc_driver::VmcDriver;
 
+const KEYBOARD_DEVICE_NAME:&str = "keyboard";
+const VMC_DEVICE_NAME:&str = "vmc";
+
 
 #[tokio::main]
 async fn main() {
     println!("VMC Host initialising");
-    match LcdDriver::new("keyboard") {
+    match LcdDriver::new(KEYBOARD_DEVICE_NAME) {
         Ok(mut driver) => {
             let _ = driver.set_text(String::from("Snackbot"), String::from("Makerspace Vending Solutions")).await;
         },
@@ -17,7 +20,7 @@ async fn main() {
         }
     }
 
-    match VmcDriver::new("vmc") {
+    match VmcDriver::new(VMC_DEVICE_NAME) {
         Ok(mut driver) => {
             println!("Connected to VMC - mapping");
             println!("{:?}", driver.map_machine().await);
