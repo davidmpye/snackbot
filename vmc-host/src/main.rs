@@ -4,7 +4,7 @@ use lcd_driver::LcdDriver;
 mod vmc_driver;
 use vmc_driver::VmcDriver;
 
-const KEYBOARD_DEVICE_NAME:&str = "keyboard";
+const KEYBOARD_DEVICE_NAME:&str = "matrix-keyboard";
 const VMC_DEVICE_NAME:&str = "vmc";
 
 #[tokio::main]
