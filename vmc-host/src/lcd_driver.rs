@@ -59,12 +59,12 @@ impl LcdDriver {
 
     pub async fn set_text(
         &mut self,
-        line1: String,
-        line2: String,
+        line1: &str,
+        line2: &str,
     ) -> Result<(), LcdClientError<Infallible>> {
-        let mut l1_copy = line1;
+        let mut l1_copy = String::from(line1);
         l1_copy.truncate(32);
-        let mut l2_copy = line2;
+        let mut l2_copy = String::from(line2);
         l2_copy.truncate(32);
 
         //Trailing whitespace stripped off at remote end

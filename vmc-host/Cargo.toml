@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-channel = "2.3.1"
+gtk4 = "0.9.5"
 keyboard-icd = { version = "0.1.0", path = "../matrix-keyboard/keyboard-icd", features = ["use-std"] }
 nusb = "0.1.12"
 postcard-rpc = { version = "0.11.3", features = ["raw-nusb", "use-std"] }
