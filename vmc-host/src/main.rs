@@ -1,11 +1,10 @@
-mod lcd_driver;
+    mod lcd_driver;
 use gtk4::glib::value;
 use lcd_driver::LcdDriver;
 
 mod vmc_driver;
 use vmc_driver::VmcDriver;
 use vmc_icd::DispenserAddress;
-
 
 const KEYBOARD_DEVICE_NAME:&str = "matrix-keyboard";
 const VMC_DEVICE_NAME:&str = "vmc";
@@ -16,6 +15,10 @@ use crate::glib::clone;
 use tokio::runtime::Runtime;  //We use the Tokio runtime to run the postcard-apc async functions
 use std::sync::OnceLock;
 
+use std::sync::{Arc,Mutex};
+
+use async_channel::{Sender, Receiver};
+
 //Spawn a tokio runtime instance for the postcard-rpc device handlers
 fn runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -23,137 +26,129 @@ fn runtime() -> &'static Runtime {
         Runtime::new().expect("Failed to spawn tokio runtime")
     })
 }
-
 fn main() -> glib::ExitCode {
     let application = gtk4::Application::builder()
         .application_id("uk.org.makerspace.snackbot")
         .build();
-    application.connect_activate(build_ui);
 
+    application.connect_activate(build_ui);
     application.run()
+}
+
+async fn handle_vend(key_receiver: Receiver<char>) {
+    let mut row:Option<char> = None;
+    let mut col: Option<char> = None;
+
+    while let Ok(response) = key_receiver.recv().await {
+        if response.is_ascii_digit() && response >= '0' && response <= '9' {
+            if col.is_some() {
+                row = None;
+            }
+            col = Some(response);
+        }
+        else if response.is_ascii_alphabetic() && response >= 'a' && response <= 'h' {
+            if row.is_some() {
+                col = None;
+            }
+            row = Some(response); 
+        }
+        else {
+            println!("Error - unexpected ascii character {}", response);
+        }
+
+        if row.is_some() && col.is_some() {
+            //Valid rows and columns found
+            let r = row.unwrap();
+            let c = col.unwrap();
+            //Got valid row and column, time to vend!
+            let (sender, receiver) = async_channel::bounded(1);
+            //Spawn a Postcard-RPC vend request on the Tokio runtime
+            runtime().spawn(clone!(
+                async move {
+                    match VmcDriver::new(VMC_DEVICE_NAME) {
+                        Ok(mut driver) => {
+                            let result = driver.dispense(DispenserAddress{row: r, col: c}).await;
+                            sender.send(result).await.expect("Vend channel failure");
+                        },
+                        Err(msg) => {
+                            println!("VMC init failure: {}", msg);
+                            //need to send something down the channel..
+                            sender.send(Err(vmc_driver::VmcClientError::Comms(postcard_rpc::host_client::HostErr::BadResponse))).await.expect("Vend channel failure");
+                        },
+                    }
+                }
+            ));
+
+            //This runs on the local event loop, and receives the result from the vend postcard RPC command running on tokio
+            glib::spawn_future_local(async move {
+                while let Ok(response) = receiver.recv().await {
+                    if let Ok(()) = response {
+                        println!("Vend success");
+                    } else {
+                        println!("Vend failed");
+                    }
+                }
+            });
+        }
+    }
 }
 
 fn build_ui(application: &gtk4::Application) {
     let window = gtk4::ApplicationWindow::new(application);
-
     window.set_title(Some("Snackbot"));
+    //Set to the resolution of the Pimoroni screen
     window.set_default_size(480, 800);
-    
-    let event_controller = keyboard_listener();
-    window.add_controller(event_controller);
 
     let vbox  = gtk4::Box::builder().orientation(gtk4::Orientation::Vertical).build();
 
     let button = gtk4::Button::with_label("Press test to vend");
 
-    let (sender, receiver) = async_channel::bounded(1);
-
-    button.connect_clicked(move |_| {
-        runtime().spawn(clone!(
-            #[strong]
-            sender,
-            async move {
-                let c = LcdDriver::new(KEYBOARD_DEVICE_NAME);
-                match c {
-                    Ok(mut d) => {
-                        let _  = d.set_text("TEST", "OK").await;
-                    },
-                    Err(msg) => {println!("LCD comms err: {}", msg);}
-                }
-               
-               sender
-               .send(Some(true))
-               .await
-               .expect("Channel closed");
-            }
-        ));
-    });
-
-    let label1 = gtk4::Label::new(None);
-    label1.set_markup("<span font=\"36\">Please select</span>");
+    let address_label =  gtk4::Label::new(None);
+    address_label.set_markup("<span font=\"36\">Please select</span>");
     
-    let label2 = gtk4::Label::new(None);
-    label2.set_markup("<span font=\"36\">an item</span>");
 
+    //This async channel is for the handle_vend function to receive key presses via the keyboard listener
+    let (key_sender, key_receiver) = async_channel::bounded::<char>(1);
+    //The keyboard listener will listen for A-G, 0-9, tick (enter), cross (esc), and UP/DOWN arrows
+    //from the membrane keypad on the vending machine (appears as USB keyboard)
+    window.add_controller(keyboard_listener(key_sender));
+    //Spawn off the handle vend future, with a channel to receive key presses
+    glib::spawn_future_local(async move { handle_vend(key_receiver).await; });
 
-    glib::spawn_future_local(async move {
-        while let Ok(response) = receiver.recv().await {
-
-        }
-    });
-
-    vbox.append(&label1);
-    vbox.append(&label2);
+    vbox.append(&address_label);
     vbox.append(&button);
-    
+        
     window.set_child(Some(&vbox));
-
     window.present();
 }
 
-fn keyboard_listener() -> gtk4::EventControllerKey {
+fn keyboard_listener(sender: Sender<char>) -> gtk4::EventControllerKey {
     let event_controller = gtk4::EventControllerKey::new();
-    event_controller.connect_key_pressed(|_, key, _, _| {
-        match key {
-            gdk::Key::Escape => {
-                println!("CANCEL");
-            },
-            gdk::Key::Return => {
-                println!("VEND");
-            }
-            gdk::Key::a => {
-                println!("a");
-            },
-            gdk::Key::b => {
-                println!("b");
-            },
-            gdk::Key::c => {
-                println!("c");
-            },
-            gdk::Key::d => {
-                println!("d");
-            },
-            gdk::Key::e => {
-                println!("e");
-            },
-            gdk::Key::f => {
-                println!("f");
-            },
-            gdk::Key::g => {
-                println!("g");
-            },
-            gdk::Key::_0 => {
-                println!("0");
-            },
-            gdk::Key::_1 => {
-                println!("1");
-            },
-            gdk::Key::_2 => {
-                println!("2");
-            },
-            gdk::Key::_3 => {
-                println!("3");
-            },
-            gdk::Key::_4 => {
-                println!("4");
-            },
-            gdk::Key::_5 => {
-                println!("5");
-            },
-            gdk::Key::_6 => {
-                println!("6");
-            },
-            gdk::Key::_7 => {
-                println!("7");
-            },
-            gdk::Key::_8 => {
-                println!("8");
-            },
-            gdk::Key::_9 => {
-                println!("9");
-            },
-            _ => (),
-        }
+    event_controller.connect_key_pressed(move |_, key, _, _| {
+        let c = match key {
+            gdk::Key::Escape => 'x',
+            gdk::Key::Return => 'y',
+            gdk::Key::a => 'a',
+            gdk::Key::b => 'b',
+            gdk::Key::c => 'c',
+            gdk::Key::d => 'd',
+            gdk::Key::e => 'e',
+            gdk::Key::f => 'f',
+            gdk::Key::g => 'g',
+            gdk::Key::h => 'h',
+            gdk::Key::_0 => '0',
+            gdk::Key::_1 => '1',
+            gdk::Key::_2 => '2',
+            gdk::Key::_3 => '3',
+            gdk::Key::_4 => '4',
+            gdk::Key::_5 => '5',
+            gdk::Key::_6 => '6',
+            gdk::Key::_7 => '7',
+            gdk::Key::_8 => '8',
+            gdk::Key::_9 => '9',      
+            _ => ' ',
+        };
+        let _ = sender.send_blocking(c);
         glib::Propagation::Proceed
     });
     event_controller
