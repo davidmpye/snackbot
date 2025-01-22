@@ -46,7 +46,7 @@ async fn handle_vend(key_receiver: Receiver<char>) {
             }
             col = Some(response);
         }
-        else if response.is_ascii_alphabetic() && response >= 'a' && response <= 'h' {
+        else if response.is_ascii_alphabetic() && response >= 'A' && response <= 'H' {
             if row.is_some() {
                 col = None;
             }
@@ -126,16 +126,16 @@ fn keyboard_listener(sender: Sender<char>) -> gtk4::EventControllerKey {
     let event_controller = gtk4::EventControllerKey::new();
     event_controller.connect_key_pressed(move |_, key, _, _| {
         let c = match key {
-            gdk::Key::Escape => 'x',
-            gdk::Key::Return => 'y',
-            gdk::Key::a => 'a',
-            gdk::Key::b => 'b',
-            gdk::Key::c => 'c',
-            gdk::Key::d => 'd',
-            gdk::Key::e => 'e',
-            gdk::Key::f => 'f',
-            gdk::Key::g => 'g',
-            gdk::Key::h => 'h',
+            gdk::Key::Escape => 'X',
+            gdk::Key::Return => 'Y',
+            gdk::Key::a => 'A',
+            gdk::Key::b => 'B',
+            gdk::Key::c => 'C',
+            gdk::Key::d => 'D',
+            gdk::Key::e => 'E',
+            gdk::Key::f => 'F',
+            gdk::Key::g => 'G',
+            gdk::Key::h => 'H',
             gdk::Key::_0 => '0',
             gdk::Key::_1 => '1',
             gdk::Key::_2 => '2',
