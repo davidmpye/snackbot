@@ -10,5 +10,7 @@ keyboard-icd = { version = "0.1.0", path = "../matrix-keyboard/keyboard-icd", fe
 nusb = "0.1.12"
 postcard-rpc = { version = "0.11.3", features = ["raw-nusb", "use-std"] }
 postcard-schema = "0.2.0"
+relm4 = "0.9.1"
+relm4-components = "0.9.1"
 tokio = { version = "1.43.0", features = ["full"] }
 vmc-icd = { version = "0.1.0", path = "../vmc/vmc-icd", features = ["use-std"] }
