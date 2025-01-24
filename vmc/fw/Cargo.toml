@@ -41,6 +41,7 @@ postcard-rpc = { version = "0.11.3", features = ["embassy-usb-0_3-server"] }
 postcard = "1.1.1"
 postcard-schema = "0.2.0"
 vmc-icd = { version = "0.1.0", path = "../vmc-icd" }
+pio-9bit-uart-async = { git = "https://github.com/davidmpye/pio-9bit-uart-async", version = "0.1.0" }
 
 
 [profile.release]
