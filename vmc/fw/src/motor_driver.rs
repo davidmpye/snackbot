@@ -264,7 +264,7 @@ impl<'a> MotorDriver<'a> {
 
     async fn motor_home_status(&mut self, addr:DispenserAddress) -> MotorStatus {
         let is_home = self.pulse_motor_and_read_gpio(addr, MotorDriver::motor_homed_gpio_index(addr)).await;
-        debug!("Checked to see if {}{} is home - {}", addr.row, addr.col, is_home == Level::High);
+        debug!("Checked to see if {}{} is home - {}", addr.row, addr.col, is_home);
         
         if is_home == Level::High {
             MotorStatus::Ok
