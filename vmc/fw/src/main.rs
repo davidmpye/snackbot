@@ -13,7 +13,7 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 
-use embassy_usb::{Config as UsbConfig, Handler, UsbDevice};
+use embassy_usb::Config as UsbConfig;
 
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Pin};
@@ -44,6 +44,8 @@ use postcard_rpc::{
     },
 };
 use usb_device_handler::UsbDeviceHandler;
+use usb_device_handler::usb_task;
+
 use {defmt_rtt as _, panic_probe as _};
 
 use mdb_async::Mdb;
@@ -227,11 +229,4 @@ async fn main(spawner: Spawner) {
     }
 }
 
-type MyUsbDriver = UsbDriver<'static, USB>;
-type MyUsbDevice = UsbDevice<'static, MyUsbDriver>;
-
-#[embassy_executor::task]
-async fn usb_task(mut usb: MyUsbDevice) -> ! {
-    usb.run().await
-}
 
