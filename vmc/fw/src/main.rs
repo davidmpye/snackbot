@@ -186,6 +186,40 @@ async fn main(spawner: Spawner) {
     //USB device handler task
     spawner.must_spawn(usb_task(usb));
 
+    // PIO UART setup for MDB
+    let pio::Pio {
+        mut common, sm0, sm1, ..
+    } = pio::Pio::new(p.PIO0, Irqs);
+    let tx_program = PioUartTxProgram::new(&mut common);
+    let uart_tx = PioUartTx::new(9600, &mut common, sm0, p.PIN_21, &tx_program);
+    let rx_program = PioUartRxProgram::new(&mut common);
+    let uart_rx = PioUartRx::new(9600, 25000, 2500, &mut common, sm1, p.PIN_20, &rx_program);
+    let mut mdb =Mdb::new(uart_tx, uart_rx);
+
+    /*
+    match CoinAcceptor::init(&mut mdb).await {
+        Some(mut b) => {info!("Got {}",b);
+        b.enable_coins(&mut mdb, 0xffff).await;
+        loop {
+            for (num, e) in  b.poll(&mut mdb).await.iter().enumerate() {
+                match e {
+                    Some(event) => {
+                        match event {
+                            PollEvent::Status(ChangerStatus::EscrowPressed) => {debug!("Escrow pressed - event number {}", num);}
+                            PollEvent::Coin(x) => {debug!("Got a coin - event num {}",num);}
+                            _=> {},
+                        }
+                    },
+                     _ =>{},
+                }
+            }
+        }
+    },
+        _ => {},
+    }
+ */
+
+
     //Postcard server mainloop just runs here
     loop {
         let _ = server.run().await;
