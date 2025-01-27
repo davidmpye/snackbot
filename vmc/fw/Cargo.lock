@@ -993,6 +993,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdb-async"
+version = "0.1.0"
+source = "git+https://github.com/davidmpye/mdb-async#a659cc97f37789cb35a29f8f699b35f14723e6c6"
+dependencies = [
+ "defmt",
+ "embassy-time",
+ "embedded-io-async",
+ "enumn",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1591,6 +1602,7 @@ dependencies = [
  "fixed-macro",
  "log",
  "mdb",
+ "mdb-async",
  "panic-probe",
  "pio",
  "pio-9bit-uart-async",

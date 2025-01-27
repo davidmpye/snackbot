@@ -46,6 +46,9 @@ use postcard_rpc::{
 
 use {defmt_rtt as _, panic_probe as _};
 
+use mdb_async::{Mdb};
+use mdb_async::coin_acceptor::{CoinAcceptor, ChangerStatus, PollEvent};
+
 type AppDriver = usb::Driver<'static, USB>;
 type BufStorage = PacketBuffers<1024, 1024>;
 static PBUFS: ConstStaticCell<BufStorage> = ConstStaticCell::new(BufStorage::new());
@@ -194,9 +197,8 @@ async fn main(spawner: Spawner) {
     let uart_tx = PioUartTx::new(9600, &mut common, sm0, p.PIN_21, &tx_program);
     let rx_program = PioUartRxProgram::new(&mut common);
     let uart_rx = PioUartRx::new(9600, 25000, 2500, &mut common, sm1, p.PIN_20, &rx_program);
-    let mut mdb =Mdb::new(uart_tx, uart_rx);
+    let mut mdb = Mdb::new(uart_tx, uart_rx);
 
-    /*
     match CoinAcceptor::init(&mut mdb).await {
         Some(mut b) => {info!("Got {}",b);
         b.enable_coins(&mut mdb, 0xffff).await;
@@ -217,7 +219,6 @@ async fn main(spawner: Spawner) {
     },
         _ => {},
     }
- */
 
 
     //Postcard server mainloop just runs here
