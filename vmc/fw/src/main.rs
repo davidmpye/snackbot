@@ -2,16 +2,16 @@
 #![no_main]
 
 mod motor_driver;
+mod usb_device_handler;
 
 use embassy_sync::mutex::Mutex;
 
-use core::sync::atomic::{AtomicBool, Ordering};
 use defmt::*;
 
 use embassy_executor::Spawner;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 
 use embassy_usb::{Config as UsbConfig, Handler, UsbDevice};
 
@@ -43,10 +43,10 @@ use postcard_rpc::{
         Dispatch, Sender, Server,
     },
 };
-
+use usb_device_handler::UsbDeviceHandler;
 use {defmt_rtt as _, panic_probe as _};
 
-use mdb_async::{Mdb};
+use mdb_async::Mdb;
 use mdb_async::coin_acceptor::{CoinAcceptor, ChangerStatus, PollEvent};
 
 type AppDriver = usb::Driver<'static, USB>;
@@ -139,9 +139,9 @@ async fn main(spawner: Spawner) {
     let (mut builder, tx_impl, rx_impl) =
         STORAGE.init_without_build(driver, *config, pbufs.tx_buf.as_mut_slice());
 
-    static DEVICE_HANDLER: StaticCell<MyDeviceHandler> = StaticCell::new();
+    static DEVICE_HANDLER: StaticCell<UsbDeviceHandler> = StaticCell::new();
 
-    let device_handler = DEVICE_HANDLER.init(MyDeviceHandler::new());
+    let device_handler = DEVICE_HANDLER.init(UsbDeviceHandler::new());
     builder.handler(device_handler);
 
     let context = Context {};
@@ -235,46 +235,3 @@ async fn usb_task(mut usb: MyUsbDevice) -> ! {
     usb.run().await
 }
 
-struct MyDeviceHandler {
-    configured: AtomicBool,
-}
-
-impl MyDeviceHandler {
-    fn new() -> Self {
-        MyDeviceHandler {
-            configured: AtomicBool::new(false),
-        }
-    }
-}
-
-impl Handler for MyDeviceHandler {
-    fn enabled(&mut self, enabled: bool) {
-        self.configured.store(false, Ordering::Relaxed);
-        if enabled {
-            info!("Device enabled");
-        } else {
-            info!("Device disabled");
-        }
-    }
-
-    fn reset(&mut self) {
-        self.configured.store(false, Ordering::Relaxed);
-        info!("Bus reset, the Vbus current limit is 100mA");
-    }
-
-    fn addressed(&mut self, addr: u8) {
-        self.configured.store(false, Ordering::Relaxed);
-        info!("USB address set to: {}", addr);
-    }
-
-    fn configured(&mut self, configured: bool) {
-        self.configured.store(configured, Ordering::Relaxed);
-        if configured {
-            info!(
-                "Device configured, it may now draw up to the configured current limit from Vbus."
-            )
-        } else {
-            info!("Device is no longer configured, the Vbus current limit is 100mA.");
-        }
-    }
-}
