@@ -28,30 +28,30 @@ impl Handler for UsbDeviceHandler {
     fn enabled(&mut self, enabled: bool) {
         self.configured.store(false, Ordering::Relaxed);
         if enabled {
-            info!("Device enabled");
+            debug!("USB device enabled");
         } else {
-            info!("Device disabled");
+            debug!("USB device disabled");
         }
     }
 
     fn reset(&mut self) {
         self.configured.store(false, Ordering::Relaxed);
-        info!("Bus reset, the Vbus current limit is 100mA");
+        debug!("USB reset, the Vbus current limit is 100mA");
     }
 
     fn addressed(&mut self, addr: u8) {
         self.configured.store(false, Ordering::Relaxed);
-        info!("USB address set to: {}", addr);
+        debug!("USB address set to: {}", addr);
     }
 
     fn configured(&mut self, configured: bool) {
         self.configured.store(configured, Ordering::Relaxed);
         if configured {
-            info!(
-                "Device configured, it may now draw up to the configured current limit from Vbus."
+            debug!(
+                "USB device configured, it may now draw up to the configured current limit from Vbus."
             )
         } else {
-            info!("Device is no longer configured, the Vbus current limit is 100mA.");
+            debug!("USB device is no longer configured, the Vbus current limit is 100mA.");
         }
     }
 }

@@ -920,7 +920,7 @@ checksum = "04cbf5b083de1c7e0222a7a51dbfdba1cbe1c6ab0b15e29fff3f6c077fd9cd9f"
 [[package]]
 name = "mdb-async"
 version = "0.1.0"
-source = "git+https://github.com/davidmpye/mdb-async#a659cc97f37789cb35a29f8f699b35f14723e6c6"
+source = "git+https://github.com/davidmpye/mdb-async#e04c9df2ad03b1ace3633291eb07e7509e118c35"
 dependencies = [
  "defmt",
  "embassy-time",
@@ -1074,7 +1074,7 @@ dependencies = [
 [[package]]
 name = "pio-9bit-uart-async"
 version = "0.1.0"
-source = "git+https://github.com/davidmpye/pio-9bit-uart-async#a008e95ce176f379d17fe6ab71e51713d22b3ac3"
+source = "git+https://github.com/davidmpye/pio-9bit-uart-async#c21812af80622934fc0cb0db7bf56a773fec30fa"
 dependencies = [
  "embassy-rp",
  "embassy-sync",

@@ -44,6 +44,9 @@ use postcard_rpc::{
         Dispatch, Sender, Server,
     },
 };
+
+
+
 use usb_device_handler::UsbDeviceHandler;
 use usb_device_handler::usb_task;
 
@@ -202,8 +205,8 @@ async fn main(spawner: Spawner) {
                 match e {
                     Some(event) => {
                         match event {
-                            PollEvent::Status(ChangerStatus::EscrowPressed) => {debug!("Escrow pressed - event number {}", num);}
-                            PollEvent::Coin(x) => {debug!("Got a coin - event num {}",num);}
+                            PollEvent::Status(ChangerStatus::EscrowPressed) => {info!("Escrow pressed - event number {}", num);}
+                            PollEvent::Coin(x) => {info!("Got a coin - event num {}",num);}
                             _=> {},
                         }
                     },
@@ -212,7 +215,9 @@ async fn main(spawner: Spawner) {
             }
         }
     },
-        _ => {},
+        _ => {
+            error!("Unable to initialise coin acceptor");
+        },
     }
 
  
