@@ -41,7 +41,6 @@ embassy-executor = { version = "0.7.0", features = ["arch-cortex-m", "defmt", "e
 embassy-usb = "0.4.0"
 postcard = "1.1.1"
 postcard-rpc = { version = "0.11.5", features = ["embassy-usb-0_4-server"] }
-mdb = { git = "http://github.com/davidmpye/mdb", version = "0.1.0" }
 mdb-async = { git = "https://github.com/davidmpye/mdb-async", version = "0.1.0" }
 
 
