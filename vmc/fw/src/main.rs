@@ -26,11 +26,13 @@ use embassy_time::Duration;
 use static_cell::{ConstStaticCell, StaticCell};
 
 use vmc_icd::{
-    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, ForceDispense, Dispense, GetDispenserInfo, EscrowPressedTopic
+    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, ForceDispense, Dispense, GetDispenserInfo, CoinInsertedTopic, EscrowPressedTopic
 };
+use vmc_icd::coinacceptor::{CoinInserted,CoinRouting};
 
 use vmc_icd::dispenser::{CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption, DispenserType, 
     MotorStatus};
+
 
 use pio_9bit_uart_async::PioUart;
 use embedded_io_async::{Read, Write};
@@ -204,18 +206,22 @@ async fn main(spawner: Spawner) {
         b.enable_coins(&mut mdb, 0xffff).await;
         let mut seq = 0x00u16;
         loop {
-            for (num, e) in  b.poll(&mut mdb).await.iter().enumerate() {
+            for e in b.poll(&mut mdb).await.iter() {
                 match e {
                     Some(event) => {
                         match event {
                             PollEvent::Status(ChangerStatus::EscrowPressed) => {
+                                info!("Escrow lever pressed");
                                 server.sender().publish::<EscrowPressedTopic>(seq.into(), &());
                                 seq +=1;
                             }
                             PollEvent::Coin(x) => {
-                                
-                                info!("Got a coin - event num {}",num);
-                            
+                                info!("Coin inserted - unscaled value: {}", x.unscaled_value);     
+                                let coinevent = CoinInserted {
+                                    value: x.unscaled_value,
+                                    routing: CoinRouting::CashBox //fixme!
+                                };
+                                server.sender().publish::<CoinInsertedTopic>(seq.into(), &coinevent);              
                             }
                             _=> {},
                         }

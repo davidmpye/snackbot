@@ -9,8 +9,6 @@ use vmc_icd::dispenser::{
     MotorStatus, 
 };
     
-use vmc_icd:: { ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, Dispense,ForceDispense, GetDispenserInfo};
-
 pub struct MotorDriver<'a> {
     bus: [OutputOpenDrain<'a>; 8],
     clks: [OutputOpenDrain<'a>; 3],
