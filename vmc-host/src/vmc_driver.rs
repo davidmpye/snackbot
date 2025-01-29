@@ -4,8 +4,8 @@ use postcard_rpc::{
     standard_icd::{PingEndpoint, WireError, ERROR_PATH},
 };
 
-use vmc_icd::{Dispense, ForceDispense, DispenserAddress, Dispenser};
-
+use vmc_icd::dispenser::{ DispenserAddress, Dispenser};
+use vmc_icd::{Dispense, ForceDispense };
 use std::convert::Infallible;
 
 #[derive(Debug)]
@@ -53,12 +53,14 @@ impl VmcDriver {
         //For all possible machine addresses, see if there is a dispenser present
         for row in [ 'A', 'B', 'C', 'D', 'E', 'F','G' ] {
             for col in ['0','1','2','3','4','5','6','7','8','9'] {
-              //  let disp = self.driver.send_resp::<DispenserStatus><&addr>.await;
-
+        //      let disp = self.driver.send_resp::<GetDispenserInfo><&addr>.await;
+//fixme
             }
         }
 
         dispensers
     }
+
+
 
 }

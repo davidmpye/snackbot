@@ -4,7 +4,7 @@ mod vmc_driver;
 use relm4::gtk::prelude::WidgetExt;
 use vmc_driver::VmcDriver;
 
-use vmc_icd::DispenserAddress;
+use vmc_icd::dispenser::DispenserAddress;
 
 const KEYBOARD_DEVICE_NAME:&str = "matrix-keyboard";
 const VMC_DEVICE_NAME:&str = "vmc";
