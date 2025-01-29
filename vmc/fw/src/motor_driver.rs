@@ -4,10 +4,12 @@ use embassy_time::{Duration, Timer, WithTimeout};
 
 use embassy_rp::gpio::{AnyPin, Level, OutputOpenDrain};
 
-use vmc_icd::{
-    CanStatus, Dispense, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption, DispenserType, ForceDispense, 
-    MotorStatus,GetDispenserInfo, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST
+use vmc_icd::dispenser::{
+    CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption, DispenserType,
+    MotorStatus, 
 };
+    
+use vmc_icd:: { ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, Dispense,ForceDispense, GetDispenserInfo};
 
 pub struct MotorDriver<'a> {
     bus: [OutputOpenDrain<'a>; 8],

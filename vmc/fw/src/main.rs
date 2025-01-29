@@ -26,9 +26,11 @@ use embassy_time::Duration;
 use static_cell::{ConstStaticCell, StaticCell};
 
 use vmc_icd::{
-    CanStatus, Dispense, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption, DispenserType, ForceDispense, 
-    MotorStatus,GetDispenserInfo, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST
+    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, ForceDispense, Dispense, GetDispenserInfo, EscrowPressedTopic
 };
+
+use vmc_icd::dispenser::{CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption, DispenserType, 
+    MotorStatus};
 
 use pio_9bit_uart_async::PioUart;
 use embedded_io_async::{Read, Write};
@@ -200,13 +202,21 @@ async fn main(spawner: Spawner) {
     match CoinAcceptor::init(&mut mdb).await {
         Some(mut b) => {info!("Got {}",b);
         b.enable_coins(&mut mdb, 0xffff).await;
+        let mut seq = 0x00u16;
         loop {
             for (num, e) in  b.poll(&mut mdb).await.iter().enumerate() {
                 match e {
                     Some(event) => {
                         match event {
-                            PollEvent::Status(ChangerStatus::EscrowPressed) => {info!("Escrow pressed - event number {}", num);}
-                            PollEvent::Coin(x) => {info!("Got a coin - event num {}",num);}
+                            PollEvent::Status(ChangerStatus::EscrowPressed) => {
+                                server.sender().publish::<EscrowPressedTopic>(seq.into(), &());
+                                seq +=1;
+                            }
+                            PollEvent::Coin(x) => {
+                                
+                                info!("Got a coin - event num {}",num);
+                            
+                            }
                             _=> {},
                         }
                     },
