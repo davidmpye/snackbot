@@ -5,11 +5,9 @@ edition = "2021"
 
 [dependencies]
 async-channel = "2.3.1"
-gdk = "0.18.2"
 gdk4 = "0.9.5"
 glib = "0.20.7"
 glib-macros = "0.20.7"
-gtk = "0.18.2"
 gtk4 = "0.9.5"
 keyboard-icd = { version = "0.1.0", path = "../matrix-keyboard/keyboard-icd", features = ["use-std"] }
 nusb = "0.1.12"
