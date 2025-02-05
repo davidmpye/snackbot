@@ -1,147 +1,49 @@
 mod lcd_driver;
 use lcd_driver::LcdDriver;
 mod vmc_driver;
-use relm4::gtk::prelude::WidgetExt;
 use vmc_driver::VmcDriver;
 
-use vmc_icd::dispenser::DispenserAddress;
+use vmc_icd::dispenser::{DispenserAddress, Dispenser};
+
+const APP_ID: &str = "uk.org.makerspace.snackbot";
 
 const KEYBOARD_DEVICE_NAME:&str = "matrix-keyboard";
 const VMC_DEVICE_NAME:&str = "vmc";
 
 use tokio::runtime::Runtime;  //We use the Tokio runtime to run the postcard-apc async functions
-use gtk::glib::clone;
-use gtk::gdk;
-use gtk::prelude::{BoxExt, ButtonExt, GtkWindowExt};
-use relm4::{gtk, ComponentParts, ComponentSender, RelmApp, RelmWidgetExt, SimpleComponent};
-/* 
+
+use std::sync::OnceLock;
+use gtk::prelude::*;
+use gtk::{Application, ApplicationWindow};
+use glib_macros::clone;
+use gtk::glib;
+
 //Spawn a tokio runtime instance for the postcard-rpc device handlers
 fn runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
     RUNTIME.get_or_init(|| {
         Runtime::new().expect("Failed to spawn tokio runtime")
     })
-}*/
-struct AppModel {
-    row_selected:Option<char>,
-    col_selected:Option<char>,
 }
 
-#[derive(Debug)]
-enum AppMsg {
-    RowSelected(char),
-    ColSelected(char),
-    Dispense,
-    ClearSelection,
+pub enum VmcCommand {
+    VendItem(u8,u8),
+    ForceVendItem(u8,u8),
+    GetMachineMap(),
+    GetDispenser(u8,u8),
 }
 
-struct AppWidgets {
-    selected_item_label: gtk::Label,
+pub enum VmcResponse {
+    MachineMap(Vec<Dispenser>),
+    Dispenser(Dispenser),
+
+    //Vend result for a vend request
+
+    CoinAcceptorEvent(u8),
+    CoinInsertedEvent(CoinInserted)
 }
 
-impl SimpleComponent for AppModel {
-
-    /// The type of the messages that this component can receive.
-    type Input = AppMsg;
-    /// The type of the messages that this component can send.
-    type Output = ();
-    /// The type of data with which this component will be initialized.
-    type Init = u8;
-    /// The root GTK widget that this component will create.
-    type Root = gtk::Window;
-    /// A data structure that contains the widgets that you will need to update.
-    type Widgets = AppWidgets;
-
-    fn init_root() -> Self::Root {
-        gtk::Window::builder()
-            .title("Snackbot")
-            .default_width(480)
-            .default_height(800)
-            .build()
-    }
-
-    /// Initialize the UI and model.
-    fn init(
-        counter: Self::Init,
-        window: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> relm4::ComponentParts<Self> {
-        let model = AppModel { row_selected: None, col_selected: None };
-
-        let vbox = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(5)
-            .build();
-
-        //Install the keypress listener
-        window.add_controller(Self::keypress_listener(sender.clone()));
-
-
-        let vend_button = gtk::Button::with_label("Press TICK to buy");
-
-  
-        let selected_item_label = gtk::Label::new(Some("__"));
-        selected_item_label.set_margin_all(5);
-
-        window.set_child(Some(&vbox));
-        vbox.set_margin_all(5);
-        vbox.append(&vend_button);
-        vbox.append(&selected_item_label);
-
-        vend_button.connect_clicked(clone!(
-            #[strong]
-            sender,
-            move |_| {
-                sender.input(AppMsg::RowSelected('A'));
-            }
-        ));
-
-        let widgets = AppWidgets { selected_item_label };
-
-        ComponentParts { model, widgets }
-    }
-
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
-        match message {
-            AppMsg::RowSelected(x) => {
-                if self.row_selected.is_some() {
-                    self.col_selected = None;
-                }
-                self.row_selected = Some(x);
-                }
-            AppMsg::ColSelected(x) => {
-                if self.col_selected.is_some() {
-                    self.row_selected = None;
-                }
-                self.col_selected = Some(x);
-            }
-            _ => {},
-        }
-    }
-
-    /// Update the view to represent the updated model.
-    fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
-
-        let row_char = match self.row_selected {
-            Some(c) => c,
-            None => '_'
-        };
-
-        let col_char = match self.col_selected {
-            Some(c) => c,
-            None => '_'
-        };
-
-        widgets
-            .selected_item_label
-            .set_label(&format!("{}{}", row_char, col_char));
-         }
-
-
-}
-
-impl AppModel {
-
+/*
 fn keypress_listener(sender: ComponentSender<Self>) -> gtk4::EventControllerKey {
     let event_controller = gtk4::EventControllerKey::new();
     event_controller.connect_key_pressed(move |_, key, _, _| {
@@ -169,20 +71,57 @@ fn keypress_listener(sender: ComponentSender<Self>) -> gtk4::EventControllerKey 
             _ => ' ',
         };
         if c.is_alphabetic() { 
-            sender.input(AppMsg::RowSelected(c));
+           // sender.input(AppMsg::RowSelected(c));
         }
         else {
-            sender.input(AppMsg::ColSelected(c));
+            //sender.input(AppMsg::ColSelected(c));
         }
         glib::Propagation::Proceed
     });
     event_controller
 }
+ */
+use vmc_icd::EventTopic;
+use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
+fn build_ui(app: &Application) {
+    // Create a window and set the title
+    let window = ApplicationWindow::builder()
+        .application(app)
+        .title("Snackbot")
+        .build();
 
+    // Present window
+    window.present();
 }
 
 
-fn main() {
-    let app = RelmApp::new("uk.org.makerspace.snackbot");
-    app.run::<AppModel>(0);
+ fn main() -> glib::ExitCode {
+    // Create a new application
+    let app = Application::builder().application_id(APP_ID).build();
+
+    // Connect to "activate" signal of `app`
+    app.connect_activate(build_ui);
+    //Start up the VMC handler
+    let (vmc_response_channel_tx, vmc_response_channel_rx) = async_channel::bounded::<u32>(1);
+    let (vmc_command_channel_tx, vmc_command_channel_rx) = async_channel::bounded::<u32>(1);
+
+    runtime().spawn( clone! (
+        #[strong]
+        vmc_command_channel_rx,
+        #[strong]
+        vmc_response_channel_tx,
+        async move {
+            println!("Spawned the runtime");
+            let vmcclient = VmcDriver::new().unwrap();
+            //Await the channel messages, and operate with the VMC driver...
+            let mut sub = vmcclient.driver.subscribe_multi::<EventTopic>(8);
+            
+        },
+    ));
+
+
+    //Start the keyboard handler
+    // Run the application
+    app.run()
 }
+

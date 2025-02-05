@@ -17,3 +17,9 @@ pub enum CoinRouting {
     Reject,
     Unknown,
 }
+
+
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq, Copy, Clone)]
+pub enum CoinAcceptorEvent {
+    EscrowPressed,
+}

@@ -56,10 +56,6 @@ impl VmcDriver {
                 let disp = self.driver.send_resp::<GetDispenserInfo>(&DispenserAddress{row:r, col:c}).await;
             }
         }
-
         dispensers
     }
-
-
-
 }

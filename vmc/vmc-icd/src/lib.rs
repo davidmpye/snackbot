@@ -38,8 +38,8 @@ topics! {
 topics! {
     list = TOPICS_OUT_LIST;
     direction = TopicDirection::ToClient;
-    | TopicTy                   | MessageTy     | Path                             | Cfg                           |
-    | -------                   | ---------     | ----                             | ---                           |
-    | CoinInsertedTopic         | CoinInserted  | "/mdb/coinacceptor/coininserted" |                               |
-    | EscrowPressedTopic        | ()            | "/mdb/coinacceptor/escrowpressed"|                               |
+    | TopicTy                   | MessageTy             | Path                             | Cfg                           |
+    | -------                   | ---------             | ----                             | ---                           |
+    | CoinInsertedTopic         | CoinInserted          | "/mdb/coinacceptor/coininserted" |                               |
+    | EventTopic                | CoinAcceptorEvent     | "/mdb/coinacceptor/event"        |                               |
 }

@@ -26,9 +26,9 @@ use embassy_time::Duration;
 use static_cell::{ConstStaticCell, StaticCell};
 
 use vmc_icd::{
-    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, ForceDispense, Dispense, GetDispenserInfo, CoinInsertedTopic, EscrowPressedTopic
+    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, ForceDispense, Dispense, GetDispenserInfo, CoinInsertedTopic, EventTopic
 };
-use vmc_icd::coinacceptor::{CoinInserted,CoinRouting};
+use vmc_icd::coinacceptor::{CoinInserted,CoinRouting, CoinAcceptorEvent};
 
 use vmc_icd::dispenser::{CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption, DispenserType, 
     MotorStatus};
@@ -57,7 +57,7 @@ use usb_device_handler::usb_task;
 use {defmt_rtt as _, panic_probe as _};
 
 use mdb_async::Mdb;
-use mdb_async::coin_acceptor::{CoinAcceptor, ChangerStatus, PollEvent};
+use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
 
 type AppDriver = usb::Driver<'static, USB>;
 type BufStorage = PacketBuffers<1024, 1024>;
@@ -202,7 +202,13 @@ async fn main(spawner: Spawner) {
     let mut mdb = Mdb::new(uart);
     
     match CoinAcceptor::init(&mut mdb).await {
-        Some(mut b) => {info!("Got {}",b);
+        Some(mut b) => {
+            if let Some(features) = &b.l3_features {
+                info!("L3 coin acceptor OK, Manufacturer: {}, Model {}, S/N {}", features.manufacturer_code.as_str(), features.model.as_str(), features.serial_number.as_str());
+            }
+            else {
+                info!("Level 2 coin acceptor OK");
+            }
         b.enable_coins(&mut mdb, 0xffff).await;
         let mut seq = 0x00u16;
         loop {
@@ -210,10 +216,9 @@ async fn main(spawner: Spawner) {
                 match e {
                     Some(event) => {
                         match event {
-                            PollEvent::Status(ChangerStatus::EscrowPressed) => {
-                                info!("Escrow lever pressed");
-                                server.sender().publish::<EscrowPressedTopic>(seq.into(), &());
-                                seq +=1;
+                            PollEvent::Status(bytes) => {
+                                info!("Let's pretend it was always escrow");
+                                server.sender().publish::<EventTopic>(seq.into(), &CoinAcceptorEvent::EscrowPressed).await;            
                             }
                             PollEvent::Coin(x) => {
                                 info!("Coin inserted - unscaled value: {}", x.unscaled_value);     
@@ -221,7 +226,7 @@ async fn main(spawner: Spawner) {
                                     value: x.unscaled_value,
                                     routing: CoinRouting::CashBox //fixme!
                                 };
-                                server.sender().publish::<CoinInsertedTopic>(seq.into(), &coinevent);              
+                                server.sender().publish::<CoinInsertedTopic>(seq.into(), &coinevent).await;
                             }
                             _=> {},
                         }
