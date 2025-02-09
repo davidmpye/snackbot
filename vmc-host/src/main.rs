@@ -18,8 +18,11 @@ use gtk4::{Application, ApplicationWindow, Box, Button};
 use glib_macros::clone;
 use gtk4::glib;
 
+
 use vmc_icd::EventTopic;
 use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
+
+use async_channel::{Sender};
 
 //Spawn a tokio runtime instance for the postcard-rpc device handlers
 fn runtime() -> &'static Runtime {
@@ -34,6 +37,7 @@ pub enum VmcCommand {
     ForceVendItem(u8,u8),
     GetMachineMap(),
     GetDispenser(u8,u8),
+    SetCoinAcceptorEnabled(bool),
 }
 
 pub enum VmcResponse {
@@ -88,37 +92,54 @@ fn keypress_listener(sender: ComponentSender<Self>) -> gtk4::EventControllerKey 
     event_controller
 }
  */
-fn build_ui(app: &Application) {
-    // Create a button with label and margins
-    let button = Button::builder()
+
+enum Event {
+    Clicked,
+}
+
+struct App {
+    pub button: gtk4::Button,
+    pub clicked: u32,
+}
+
+impl App {
+    pub fn new(app: &Application, tx: Sender<Event>) -> Self {
+        let button = Button::builder()
         .label("Press me!")
         .margin_top(12)
         .margin_bottom(12)
         .margin_start(12)
         .margin_end(12)
         .build();
-
-    // Create a window
-    let window = ApplicationWindow::builder()
-        .application(app)
-        .title("Snackbot")
-        .child(&button)
-        .width_request(480)
-        .height_request(800)
     
-        .build();
 
-    // Present window
-    window.present();
+        let window = ApplicationWindow::builder()
+            .application(app)
+            .title("SnackBot")
+            .child(&button)
+            .width_request(480)
+            .height_request(800)
+            .build();
+
+        window.present();
+
+        Self { button, clicked: 0 }
+    }
 }
 
  fn main() -> glib::ExitCode {
-    // Create a new application
+
     let app = Application::builder().application_id(APP_ID).build();
 
-    // Connect to "activate" signal of `app`
-    app.connect_activate(build_ui);
-/*
+    let (tx, rx) = async_channel::unbounded();
+    app.connect_activate(clone!(
+        #[strong] 
+        app, 
+        move |_| {let t = tx.clone();  App::new(&app,t);}
+    ));
+    
+    return app.run();
+
     //Start up the VMC handler's channels
     let (vmc_response_channel_tx, vmc_response_channel_rx) = async_channel::bounded::<VmcResponse>(1);
     let (vmc_command_channel_tx, vmc_command_channel_rx) = async_channel::bounded::<VmcCommand>(1);
@@ -126,7 +147,6 @@ fn build_ui(app: &Application) {
     //Set up the keyboard 'screen' driver channels
     let (lcd_command_channel_tx, lcd_command_channel_rx, ) = async_channel::bounded::<LcdCommand>(1);
     
-
     //Spawn the LCD task
     runtime().spawn( clone! (
         #[strong]
@@ -140,10 +160,7 @@ fn build_ui(app: &Application) {
             }
             //Await the channel messages, and operate with the VMC driver...
            // let mut sub = vmcclient.driver.subscribe_multi::<EventTopic>(8).await.unwrap();
-           
-
             //let resp = sub.recv().await;       
-
         },
     ));
 
@@ -154,27 +171,49 @@ fn build_ui(app: &Application) {
         #[strong]
         vmc_response_channel_tx,
         async move {
-            if let Ok(Vmc) = VmcDriver::new() {
+            if let Ok(mut Vmc) = VmcDriver::new() {
                 println!("VMC task connected");
                 //Await a message
-                if let Ok(message) = Vmc.driver.subscribe_multi::<EventTopic>(8).await {
+                let mut s1 = Vmc.driver.subscribe_multi::<EventTopic>(8).await.unwrap();
+                let mut coin_inserted_topic = Vmc.driver.subscribe_multi::<vmc_icd::CoinInsertedTopic>(8).await.unwrap();
 
-                }
-                else {
+                loop {
+                    tokio::select! {
+                        val = s1.recv()  => {
+                            println!("Something came back from VMC");
+                            match val {
+                                Ok(event) => {
+                                // vmc_response_channel_tx.send(VmcResponse::CoinAcceptorEvent(event)).await;
+                                }
+                                _ => {},
+                            }
+                        }
+                        val = coin_inserted_topic.recv()  => {
+                            match val {
+                                Ok(e) => {
+                                    let _ = vmc_response_channel_tx.send(VmcResponse::CoinInsertedEvent(e)).await;
+                                }
+                                Err(x)=> {println!("no" )},
+                            }
+                        }
+                        Ok(cmd) = vmc_command_channel_rx.recv() => {
+                            match cmd {
+                                VmcCommand::SetCoinAcceptorEnabled(enable) => {
+                                    let _ = Vmc.set_coinacceptor_enabled(enable).await;
+                                },
+                                _=> {todo!("Not implemented!")}
+                            }
 
+
+                        }, 
+                    }   
                 }
             } 
             else {
                 println!("Error - unable to connect to VMC Driver");
             }
-            //Await the channel messages, and operate with the VMC driver...
-            vmc_response_channel_tx.send(VmcResponse::CoinAcceptorEvent(0xFFu8)).await;
-            //let resp = sub.recv().await;       
         },
     ));
-
-
-
 
 
     glib::spawn_future_local(async move {
@@ -189,9 +228,9 @@ fn build_ui(app: &Application) {
 
         }
     });
- */
+ 
     //Start the keyboard handler
     // Run the application
-    app.run()
+  //  app.run()
 }
 

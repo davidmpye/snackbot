@@ -4,7 +4,7 @@ use postcard_rpc::{
     standard_icd::{PingEndpoint, WireError, ERROR_PATH},
 };
 
-use vmc_icd::dispenser::{ DispenserAddress, Dispenser};
+use vmc_icd::{dispenser::{ Dispenser, DispenserAddress}, SetCoinAcceptorEnabled};
 use vmc_icd::{Dispense, ForceDispense, GetDispenserInfo};
 use std::convert::Infallible;
 
@@ -23,6 +23,7 @@ impl<E> From<HostErr<WireError>> for VmcClientError<E> {
 pub struct VmcDriver {
     pub driver: HostClient<WireError>,
 }
+
 
 impl VmcDriver {
     pub fn new() -> Result<Self, String> {
@@ -58,4 +59,13 @@ impl VmcDriver {
         }
         dispensers
     }
+
+    //Sets whether the coin acceptor should accept coins or not
+    pub async fn set_coinacceptor_enabled(&mut self, enable:bool) -> Result<(), VmcClientError<Infallible>> {
+        let _res = self.driver.send_resp::<SetCoinAcceptorEnabled>(&enable).await?;
+        Ok(())
+    }
+
+    
+
 }

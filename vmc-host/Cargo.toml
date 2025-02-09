@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 async-channel = "2.3.1"
+cascade = "1.0.1"
 gdk4 = "0.9.5"
 glib = "0.20.7"
 glib-macros = "0.20.7"
