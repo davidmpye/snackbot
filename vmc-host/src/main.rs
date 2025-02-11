@@ -17,7 +17,6 @@ const APP_ID: &str = "uk.org.makerspace.snackbot";
 const KEYBOARD_DEVICE_NAME:&str = "matrix-keyboard";
 const VMC_DEVICE_NAME:&str = "vmc";
 
-
 use std::sync::OnceLock;
 use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow, Box, Button};
@@ -25,8 +24,6 @@ use glib_macros::clone;
 use gtk4::glib;
 
 use async_channel::Sender;
-
-
 
 #[derive (Copy, Clone)]
 pub enum VmcCommand {
@@ -51,53 +48,52 @@ pub enum LcdCommand {
     SetBackLight(bool),
 }
 
-/*
-fn keypress_listener(sender: ComponentSender<Self>) -> gtk4::EventControllerKey {
+fn keypress_listener(sender: Sender<Event>) -> gtk4::EventControllerKey {
     let event_controller = gtk4::EventControllerKey::new();
     event_controller.connect_key_pressed(move |_, key, _, _| {
         let c = match key {
-            gdk::Key::Escape => 'X',
-            gdk::Key::Return => '\n',
-            gdk::Key::a => 'A',
-            gdk::Key::b => 'B',
-            gdk::Key::c => 'C',
-            gdk::Key::d => 'D',
-            gdk::Key::e => 'E',
-            gdk::Key::f => 'F',
-            gdk::Key::g => 'G',
-            gdk::Key::h => 'H',
-            gdk::Key::_0 => '0',
-            gdk::Key::_1 => '1',
-            gdk::Key::_2 => '2',
-            gdk::Key::_3 => '3',
-            gdk::Key::_4 => '4',
-            gdk::Key::_5 => '5',
-            gdk::Key::_6 => '6',
-            gdk::Key::_7 => '7',
-            gdk::Key::_8 => '8',
-            gdk::Key::_9 => '9',      
+            gdk4::Key::Escape => 'X',
+            gdk4::Key::Return => '\n',
+            gdk4::Key::a => 'A',
+            gdk4::Key::b => 'B',
+            gdk4::Key::c => 'C',
+            gdk4::Key::d => 'D',
+            gdk4::Key::e => 'E',
+            gdk4::Key::f => 'F',
+            gdk4::Key::g => 'G',
+            gdk4::Key::h => 'H',
+            gdk4::Key::_0 => '0',
+            gdk4::Key::_1 => '1',
+            gdk4::Key::_2 => '2',
+            gdk4::Key::_3 => '3',
+            gdk4::Key::_4 => '4',
+            gdk4::Key::_5 => '5',
+            gdk4::Key::_6 => '6',
+            gdk4::Key::_7 => '7',
+            gdk4::Key::_8 => '8',
+            gdk4::Key::_9 => '9',      
             _ => ' ',
         };
-        if c.is_alphabetic() { 
-           // sender.input(AppMsg::RowSelected(c));
+        if c.is_ascii_alphanumeric() { 
+            sender.send_blocking(Event::Keypress((c)));
         }
-        else {
-            //sender.input(AppMsg::ColSelected(c));
-        }
+        //Otherwise ignore.
         glib::Propagation::Proceed
     });
     event_controller
 }
- */
 
 enum Event {
     Clicked,
+    Keypress(char),
 }
 
 struct App {
     pub button: gtk4::Button,
     pub clicked: u32,
     pub credit: u16,
+    pub row_selected: Option<char>,
+    pub col_selected: Option<char>,
 }
 
 impl App {
@@ -111,8 +107,9 @@ impl App {
         .build();
 
         // Connect to "clicked" signal of `button`
+        let tx: Sender<Event> = gui_tx.clone();
         button.connect_clicked(move |_| {
-            let _ = gui_tx.send_blocking(Event::Clicked);
+            let _ = tx.send_blocking(Event::Clicked);
         });
 
 
@@ -124,9 +121,11 @@ impl App {
             .height_request(800)
             .build();
 
+        window.add_controller(keypress_listener(gui_tx.clone()));
+
         window.present();
 
-        Self { button, clicked: 0, credit: 0 }
+        Self { button, clicked: 0, credit: 0 , row_selected: None, col_selected: None}
     }
 }
 
@@ -146,13 +145,27 @@ impl App {
             let mut app = App::new(&app,gui_tx);
             let gui_event_handler = async move {
                 while let Ok(event)= gui_rx.recv().await {  
+                    match event {
+                        Event::Keypress(key) => {
+                            println!("Key pressed - {}", key);
+                            if key.is_ascii_digit() {
+                                app.col_selected = Some(key);
+                            }
+                            else {
+                                app.row_selected = Some(key);
+                            }
+                        }
+                        _ => {
+                            println!("Unhandled event");
+                        }   
+                    }
                     //Process GUI events here.
                 }
             };
-            //Spawn the GUI event handler 
+            //Spawn the GUI event handler onto the main thread
             glib::MainContext::default().spawn_local(gui_event_handler);
 
-            //Runs on the Glib event loop
+
             let b = app.button.clone();
             let vmc_event_handler = async move { 
                 while let Ok(event)= vmc_response_channel_rx.recv().await {
