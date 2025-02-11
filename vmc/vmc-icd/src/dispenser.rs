@@ -13,7 +13,7 @@ pub struct DispenserAddress {
 //Information about a dispenser at a particular address
 //Will return None if the motor is not present
 pub type DispenserOption = Option<Dispenser>;
-#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
 pub struct Dispenser {
     pub address: DispenserAddress,
     pub dispenser_type: DispenserType,
@@ -21,20 +21,20 @@ pub struct Dispenser {
     pub can_status: Option<CanStatus>,
 }
 
-#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq, Copy, Clone)]
 pub enum DispenserType {
     Spiral,
     Can,
 }
 
-#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
 pub enum MotorStatus {
     Ok,
     MotorNotHome,
     //If motor not present, Dispenser Option would just be None
 }
 
-#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
 pub enum CanStatus {
     Ok,
     LastCan,
@@ -43,7 +43,7 @@ pub enum CanStatus {
 //The result of attempting a vend operation
 pub type DispenseResult = Result<(), DispenseError>;
 
-#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
 pub enum DispenseError {
     MotorNotPresent,
     MotorNotHome,

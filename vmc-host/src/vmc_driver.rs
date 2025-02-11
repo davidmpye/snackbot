@@ -50,7 +50,6 @@ impl VmcDriver {
 
     pub async fn map_machine(&mut self) -> Vec<Dispenser> { 
         let dispensers:Vec<Dispenser> = Vec::new();
-        
         //For all possible machine addresses, see if there is a dispenser present
         for r in [ 'A', 'B', 'C', 'D', 'E', 'F','G' ] {
             for c in ['0','1','2','3','4','5','6','7','8','9'] {
@@ -66,6 +65,11 @@ impl VmcDriver {
         Ok(())
     }
 
-    
+    pub async fn dispense_coins(&mut self, value: u16) -> Result<(), ()> {
+
+        Ok(())
+    }
+
+
 
 }

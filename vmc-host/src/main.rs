@@ -1,16 +1,20 @@
+
 mod lcd_driver;
 use lcd_driver::LcdDriver;
+
 mod vmc_driver;
 use vmc_driver::VmcDriver;
-
 use vmc_icd::dispenser::{DispenserAddress, Dispenser};
+
+use vmc_icd::EventTopic;
+use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
 
 const APP_ID: &str = "uk.org.makerspace.snackbot";
 
 const KEYBOARD_DEVICE_NAME:&str = "matrix-keyboard";
 const VMC_DEVICE_NAME:&str = "vmc";
 
-use tokio::runtime::Runtime;  //We use the Tokio runtime to run the postcard-apc async functions
+use tokio::runtime::Runtime;  //We use the Tokio runtime to run the postcard-rpc async functions
 
 use std::sync::OnceLock;
 use gtk4::prelude::*;
@@ -18,11 +22,7 @@ use gtk4::{Application, ApplicationWindow, Box, Button};
 use glib_macros::clone;
 use gtk4::glib;
 
-
-use vmc_icd::EventTopic;
-use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
-
-use async_channel::{Sender};
+use async_channel::Sender;
 
 //Spawn a tokio runtime instance for the postcard-rpc device handlers
 fn runtime() -> &'static Runtime {
@@ -32,6 +32,7 @@ fn runtime() -> &'static Runtime {
     })
 }
 
+#[derive (Copy, Clone)]
 pub enum VmcCommand {
     VendItem(u8,u8),
     ForceVendItem(u8,u8),
@@ -43,9 +44,8 @@ pub enum VmcCommand {
 pub enum VmcResponse {
     MachineMap(Vec<Dispenser>),
     Dispenser(Dispenser),
-
     //Vend result for a vend request
-    CoinAcceptorEvent(u8),
+    CoinAcceptorEvent(CoinAcceptorEvent),
     CoinInsertedEvent(CoinInserted)
 }
 
@@ -100,10 +100,11 @@ enum Event {
 struct App {
     pub button: gtk4::Button,
     pub clicked: u32,
+    pub credit: u16,
 }
 
 impl App {
-    pub fn new(app: &Application, tx: Sender<Event>) -> Self {
+    pub fn new(app: &Application, gui_tx: Sender<Event>) -> Self {
         let button = Button::builder()
         .label("Press me!")
         .margin_top(12)
@@ -111,7 +112,12 @@ impl App {
         .margin_start(12)
         .margin_end(12)
         .build();
-    
+
+        // Connect to "clicked" signal of `button`
+        button.connect_clicked(move |_| {
+            let _ = gui_tx.send_blocking(Event::Clicked);
+        });
+
 
         let window = ApplicationWindow::builder()
             .application(app)
@@ -123,30 +129,118 @@ impl App {
 
         window.present();
 
-        Self { button, clicked: 0 }
+        Self { button, clicked: 0, credit: 0 }
     }
 }
 
  fn main() -> glib::ExitCode {
-
     let app = Application::builder().application_id(APP_ID).build();
 
-    let (tx, rx) = async_channel::unbounded();
-    app.connect_activate(clone!(
-        #[strong] 
-        app, 
-        move |_| {let t = tx.clone();  App::new(&app,t);}
-    ));
-    
-    return app.run();
+    app.connect_activate(
+        |app| {
+            //Start up the VMC handler's channels
+            let (vmc_response_channel_tx, vmc_response_channel_rx) = async_channel::unbounded::<VmcResponse>();
+            let (vmc_command_channel_tx, vmc_command_channel_rx) = async_channel::unbounded::<VmcCommand>();
+            //GUI channel
+            let (gui_tx, gui_rx) = async_channel::unbounded();
+          
+            
+            let mut app = App::new(&app,gui_tx);
+            let b = app.button.clone();
+            let gui_event_handler = async move {
+                while let Ok(event)= gui_rx.recv().await {
+                    let _ = vmc_command_channel_tx.send_blocking(VmcCommand::VendItem(b'a', b'4'));
+                }
+            };
+            //Spawn the GUI event handler 
+            glib::MainContext::default().spawn_local(gui_event_handler);
 
-    //Start up the VMC handler's channels
-    let (vmc_response_channel_tx, vmc_response_channel_rx) = async_channel::bounded::<VmcResponse>(1);
-    let (vmc_command_channel_tx, vmc_command_channel_rx) = async_channel::bounded::<VmcCommand>(1);
+            //Spawn off the VMC task on the tokio runtime
+            runtime().spawn(clone!(
+                #[strong] 
+                vmc_response_channel_tx,
+                #[strong]
+                vmc_command_channel_rx,
+                async move {
+                    if let Ok(mut Vmc) = VmcDriver::new() {
+                        println!("VMC task connected");
+                        //Await a message
+                        let mut event_topic = Vmc.driver.subscribe_multi::<EventTopic>(8).await.unwrap();
+                        let mut coin_inserted_topic = Vmc.driver.subscribe_multi::<vmc_icd::CoinInsertedTopic>(8).await.unwrap();
 
-    //Set up the keyboard 'screen' driver channels
-    let (lcd_command_channel_tx, lcd_command_channel_rx, ) = async_channel::bounded::<LcdCommand>(1);
-    
+                        loop {
+                            tokio::select! {
+                                val = event_topic.recv()  => {
+                                    if let Ok(event) = val {
+                                        let _ = vmc_response_channel_tx.send(VmcResponse::CoinAcceptorEvent(event)).await;
+                                    }
+                                    else {
+                                        println!("Error receiving coinacceptor event");
+                                    }
+                                }
+                                val = coin_inserted_topic.recv() => {
+                                    if let Ok(coin) = val {
+                                        let _ = vmc_response_channel_tx.send(VmcResponse::CoinInsertedEvent(coin)).await;
+                                    }
+                                    else {
+                                        println!("Error receiving coininserted event")
+                                    }
+                                }
+                               val = vmc_command_channel_rx.recv() => {
+                                    println!("Got something here");
+                                    if let Ok(cmd) = val {
+                                        match cmd {
+                                            VmcCommand::VendItem(row,col) => {
+                                                println!("Asked to vend {}{}",row,col);
+                                            },
+                                            _ => {},
+                                        }
+                                    }
+                                    
+                                } 
+                            }
+                        }
+                    }
+                    else {
+                        println!("VMC task failed to connect");
+                    }
+                }
+            ));
+
+            //Runs on the Glib event loop
+            let b = app.button.clone();
+            let vmc_event_handler = async move { 
+                while let Ok(event)= vmc_response_channel_rx.recv().await {
+                    match event {
+                        VmcResponse::CoinInsertedEvent(e) => {
+                            //Coin inserted event here
+                            app.credit = app.credit + e.value;
+                            b.set_label(&app.credit.to_string());
+                            println!("Coin");
+                        },
+                        VmcResponse::CoinAcceptorEvent(e) => {
+                            match e {
+                                CoinAcceptorEvent::EscrowPressed => {
+                                    println!("Escrow pressed");
+
+                                }
+                                _=> {
+                                    println!("Other event");
+                                }
+                            }
+                        }
+                        _=>{
+                                
+                        },
+                    }
+                }
+            }; 
+           glib::MainContext::default().spawn_local(vmc_event_handler);
+        }
+    );  
+
+
+/*
     //Spawn the LCD task
     runtime().spawn( clone! (
         #[strong]
@@ -163,74 +257,7 @@ impl App {
             //let resp = sub.recv().await;       
         },
     ));
-
-
-    runtime().spawn( clone! (
-        #[strong]
-        vmc_command_channel_rx,
-        #[strong]
-        vmc_response_channel_tx,
-        async move {
-            if let Ok(mut Vmc) = VmcDriver::new() {
-                println!("VMC task connected");
-                //Await a message
-                let mut s1 = Vmc.driver.subscribe_multi::<EventTopic>(8).await.unwrap();
-                let mut coin_inserted_topic = Vmc.driver.subscribe_multi::<vmc_icd::CoinInsertedTopic>(8).await.unwrap();
-
-                loop {
-                    tokio::select! {
-                        val = s1.recv()  => {
-                            println!("Something came back from VMC");
-                            match val {
-                                Ok(event) => {
-                                // vmc_response_channel_tx.send(VmcResponse::CoinAcceptorEvent(event)).await;
-                                }
-                                _ => {},
-                            }
-                        }
-                        val = coin_inserted_topic.recv()  => {
-                            match val {
-                                Ok(e) => {
-                                    let _ = vmc_response_channel_tx.send(VmcResponse::CoinInsertedEvent(e)).await;
-                                }
-                                Err(x)=> {println!("no" )},
-                            }
-                        }
-                        Ok(cmd) = vmc_command_channel_rx.recv() => {
-                            match cmd {
-                                VmcCommand::SetCoinAcceptorEnabled(enable) => {
-                                    let _ = Vmc.set_coinacceptor_enabled(enable).await;
-                                },
-                                _=> {todo!("Not implemented!")}
-                            }
-
-
-                        }, 
-                    }   
-                }
-            } 
-            else {
-                println!("Error - unable to connect to VMC Driver");
-            }
-        },
-    ));
-
-
-    glib::spawn_future_local(async move {
-        while let Ok(result) = vmc_response_channel_rx.recv().await {
-            match result {
-                VmcResponse::CoinAcceptorEvent(x)=> {
-                    println!("Got X = {}", x);
-                }
-                _=> {},
-            }
-
-
-        }
-    });
- 
-    //Start the keyboard handler
-    // Run the application
-  //  app.run()
+*/
+    app.run()
 }
 
