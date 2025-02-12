@@ -17,20 +17,19 @@ const APP_ID: &str = "uk.org.makerspace.snackbot";
 const KEYBOARD_DEVICE_NAME:&str = "matrix-keyboard";
 const VMC_DEVICE_NAME:&str = "vmc";
 
-use std::sync::OnceLock;
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box, Button};
-use glib_macros::clone;
+use gtk4::{Application, ApplicationWindow, Box, Button, Stack, Label};
 use gtk4::glib;
+use glib::clone;
 
 use async_channel::Sender;
 
 #[derive (Copy, Clone)]
 pub enum VmcCommand {
-    VendItem(u8,u8),
-    ForceVendItem(u8,u8),
+    VendItem(char,char),
+    ForceVendItem(char, char),
     GetMachineMap(),                //Get a vec of dispenser
-    GetDispenser(u8,u8),            //Get information about a specific dispenser
+    GetDispenser(char,char),            //Get information about a specific dispenser
     SetCoinAcceptorEnabled(bool),   //Whether the coin acceptor should accept coins
     RefundCoins(u16),               //Refund amount
 }
@@ -52,7 +51,7 @@ fn keypress_listener(sender: Sender<Event>) -> gtk4::EventControllerKey {
     let event_controller = gtk4::EventControllerKey::new();
     event_controller.connect_key_pressed(move |_, key, _, _| {
         let c = match key {
-            gdk4::Key::Escape => 'X',
+            gdk4::Key::Escape => '\x1B',
             gdk4::Key::Return => '\n',
             gdk4::Key::a => 'A',
             gdk4::Key::b => 'B',
@@ -74,8 +73,13 @@ fn keypress_listener(sender: Sender<Event>) -> gtk4::EventControllerKey {
             gdk4::Key::_9 => '9',      
             _ => ' ',
         };
-        if c.is_ascii_alphanumeric() { 
-            sender.send_blocking(Event::Keypress((c)));
+        if c.is_ascii_alphanumeric() || c == '\n' || c == '\x1B'  { 
+            match sender.send_blocking(Event::Keypress(c)) {
+                Ok(()) => {},
+                Err(e) => {
+                    println!("Error - unable to send keypress event {}", e);
+                },
+            }
         }
         //Otherwise ignore.
         glib::Propagation::Proceed
@@ -89,34 +93,44 @@ enum Event {
 }
 
 struct App {
-    pub button: gtk4::Button,
-    pub clicked: u32,
     pub credit: u16,
     pub row_selected: Option<char>,
     pub col_selected: Option<char>,
+    pub select_item_box: Box,
+
+    pub item_label: Label,
+    pub tick_or_cross_label: Label,
+    pub stack: Stack,
 }
 
 impl App {
     pub fn new(app: &Application, gui_tx: Sender<Event>) -> Self {
-        let button = Button::builder()
-        .label("Press me!")
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
 
-        // Connect to "clicked" signal of `button`
-        let tx: Sender<Event> = gui_tx.clone();
-        button.connect_clicked(move |_| {
-            let _ = tx.send_blocking(Event::Clicked);
-        });
+        let select_item_box = Box::builder().orientation(gtk4::Orientation::Vertical).name("select_item_box").build();
+      
+        select_item_box.append(
+            &Label::builder().use_markup(true).justify(gtk4::Justification::Center)
+            .label("<span font=\"Arial Rounded MT 60\">Please\nselect\nan item\n\n</span>").build()
+        );
 
+        let item_label = Label::builder().use_markup(true).justify(gtk4::Justification::Center)
+            .label("<span font=\"Arial Rounded MT Bold 80\">_ _\n</span>").build();
+
+        select_item_box.append(&item_label);
+    
+        //Starts life hidden
+        let tick_or_cross_label = Label::builder().use_markup(true).justify(gtk4::Justification::Center)
+        .label("<span font=\"Arial Rounded MT 50\">\n✅ to vend\n❌ to cancel</span>").visible(false).build();
+        
+        select_item_box.append(&tick_or_cross_label);
+
+        let stack = Stack::builder().build();
+        let _ = stack.add_child(&select_item_box);
 
         let window = ApplicationWindow::builder()
             .application(app)
             .title("SnackBot")
-            .child(&button)
+            .child(&stack)
             .width_request(480)
             .height_request(800)
             .build();
@@ -125,7 +139,7 @@ impl App {
 
         window.present();
 
-        Self { button, clicked: 0, credit: 0 , row_selected: None, col_selected: None}
+        Self { credit: 0 , row_selected: None, col_selected: None, select_item_box, stack, item_label, tick_or_cross_label}
     }
 }
 
@@ -138,51 +152,84 @@ impl App {
             let (vmc_response_channel_tx, vmc_response_channel_rx) = async_channel::unbounded::<VmcResponse>();
             let (vmc_command_channel_tx, vmc_command_channel_rx) = async_channel::unbounded::<VmcCommand>();
             //Spawn the Postcard-RPC shim, which will run on the Tokio executor
-            spawn_postcard_shim(vmc_response_channel_tx, vmc_command_channel_rx);
+            spawn_postcard_shim(vmc_response_channel_tx.clone(), vmc_command_channel_rx.clone());
 
             //GUI channel
             let (gui_tx, gui_rx) = async_channel::unbounded();
             let mut app = App::new(&app,gui_tx);
-            let gui_event_handler = async move {
+            let gui_event_handler = clone! (
+                #[strong]
+                vmc_command_channel_tx,
+                #[strong]
+                vmc_response_channel_rx,
+                async move {
                 while let Ok(event)= gui_rx.recv().await {  
                     match event {
                         Event::Keypress(key) => {
-                            println!("Key pressed - {}", key);
                             if key.is_ascii_digit() {
+                                if app.col_selected.is_some() {
+                                    app.row_selected = None;
+                                }
                                 app.col_selected = Some(key);
                             }
-                            else {
+                            else if key.is_alphabetic() {
+                                if app.row_selected.is_some() {
+                                    app.col_selected = None;
+                                }
                                 app.row_selected = Some(key);
+                            }
+                            else  if key == '\n' { //Enter
+                                if app.row_selected.is_some() && app.col_selected.is_some() {
+                                    println!("Sending vend command");
+                                    vmc_command_channel_tx.send_blocking(VmcCommand::VendItem(app.row_selected.unwrap(), app.col_selected.unwrap()));
+                                }
+                            }
+                            else if key == '\x1B' { //Esc
+                                app.row_selected = None;
+                                app.col_selected = None;
+                            }
+
+                            let col_char = match app.col_selected {
+                                Some(x) => x,
+                                _=> ' ',
+                            };
+
+                            let row_char = match app.row_selected {
+                                Some(x) => x,
+                                _=> ' ',
+                            };
+                            app.item_label.set_label(format!("<span font=\"Arial Rounded MT Bold 80\">{}{}\n</span>", row_char, col_char).as_str());
+                            
+                            if app.row_selected.is_some() && app.col_selected.is_some() {
+                                app.tick_or_cross_label.set_visible(true);
+                            }
+                            else {
+                                app.tick_or_cross_label.set_visible(false);
                             }
                         }
                         _ => {
                             println!("Unhandled event");
                         }   
                     }
-                    //Process GUI events here.
                 }
-            };
+            });
             //Spawn the GUI event handler onto the main thread
             glib::MainContext::default().spawn_local(gui_event_handler);
 
-
-            let b = app.button.clone();
             let vmc_event_handler = async move { 
                 while let Ok(event)= vmc_response_channel_rx.recv().await {
                     match event {
                         VmcResponse::CoinInsertedEvent(e) => {
-                            //Coin inserted event here
                             app.credit = app.credit + e.value;
-                            b.set_label(&app.credit.to_string());
-                            println!("Coin");
+                            println!("Coin {}", e.value);
                         },
                         VmcResponse::CoinAcceptorEvent(e) => {
                             match e {
                                 CoinAcceptorEvent::EscrowPressed => {
-                                    vmc_command_channel_tx.send(VmcCommand::RefundCoins(app.credit));
+                                    println!("Escrow pressed");
+                                    let _ = vmc_command_channel_tx.send(VmcCommand::RefundCoins(app.credit)).await;
                                     //Should wait for confirmation back.
                                     app.credit = 0;
-                                    println!("Escrow pressed");
                                 }
                                 _=> {
                                     println!("Other event");

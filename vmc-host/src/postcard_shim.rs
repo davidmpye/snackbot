@@ -8,6 +8,7 @@ use crate::EventTopic;
 use crate::VmcResponse;
 use crate::VmcCommand;
 
+use crate::DispenserAddress;
 //Spawn a tokio runtime instance for the postcard-rpc device handlers
 fn runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -24,11 +25,11 @@ pub(crate) fn spawn_postcard_shim(vmc_response_channel_tx:Sender<VmcResponse>, v
         #[strong]
         vmc_command_channel_rx,
         async move {
-            if let Ok(mut Vmc) = VmcDriver::new() {
-                println!("VMC task connected");
+            if let Ok(mut vmc) = VmcDriver::new() {
+                println!("VMC task connected OK");
                 //Await a message
-                let mut event_topic = Vmc.driver.subscribe_multi::<EventTopic>(8).await.unwrap();
-                let mut coin_inserted_topic = Vmc.driver.subscribe_multi::<vmc_icd::CoinInsertedTopic>(8).await.unwrap();
+                let mut event_topic = vmc.driver.subscribe_multi::<EventTopic>(8).await.unwrap();
+                let mut coin_inserted_topic = vmc.driver.subscribe_multi::<vmc_icd::CoinInsertedTopic>(8).await.unwrap();
                 loop {
                     tokio::select! {
                         val = event_topic.recv()  => {
@@ -50,8 +51,18 @@ pub(crate) fn spawn_postcard_shim(vmc_response_channel_tx:Sender<VmcResponse>, v
                         val = vmc_command_channel_rx.recv() => {
                             if let Ok(cmd) = val {
                                 match cmd {
-                                    VmcCommand::VendItem(row,col) => {
-                                        println!("Asked to vend {}{}",row,col);
+                                    VmcCommand::VendItem(row, col) => {
+                                        println!("Vend command received - {}{}",row,col);
+                                        match vmc.dispense(DispenserAddress {row, col}).await {
+                                            Ok(()) => {
+                                                println!("Vend success");
+                                                //We need to deduct the cost of the item from the remaining credit.
+
+                                            },
+                                            Err(e) => {
+                                                println!("Error - failed to vend");
+                                            },
+                                        }
                                     },
                                     _ => {},
                                 }

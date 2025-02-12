@@ -5,7 +5,7 @@ use postcard_rpc::{
 };
 
 use vmc_icd::{dispenser::{ Dispenser, DispenserAddress}, SetCoinAcceptorEnabled};
-use vmc_icd::{Dispense, ForceDispense, GetDispenserInfo};
+use vmc_icd::{Dispense, ForceDispense, GetDispenserInfo, DispenseCoins};
 use std::convert::Infallible;
 
 #[derive(Debug)]
@@ -23,7 +23,6 @@ impl<E> From<HostErr<WireError>> for VmcClientError<E> {
 pub struct VmcDriver {
     pub driver: HostClient<WireError>,
 }
-
 
 impl VmcDriver {
     pub fn new() -> Result<Self, String> {
@@ -65,9 +64,9 @@ impl VmcDriver {
         Ok(())
     }
 
-    pub async fn dispense_coins(&mut self, value: u16) -> Result<(), ()> {
-
-        Ok(())
+    pub async fn dispense_coins(&mut self, value: u16) -> Result<(u16), VmcClientError<Infallible>> {
+        let amount_refunded = self.driver.send_resp::<DispenseCoins>(&value).await?;
+        Ok(amount_refunded)
     }
 
 

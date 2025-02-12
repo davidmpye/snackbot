@@ -23,14 +23,15 @@ endpoints! {
     omit_std = true;
     | EndpointTy              | RequestTy        | ResponseTy           | Path              |
     | ----------              | ---------        | ----------           | ----              |
+
+    //Dispenser endpoints
     | GetDispenserInfo        | DispenserAddress | DispenserOption      | "dispenserinfo"   |   //Get current state of dispenser at a row/col address
     | Dispense                | DispenserAddress | DispenseResult       | "dispence"        |
     | ForceDispense           | DispenserAddress | DispenseResult       | "forcedispense"   |   //Attempt vend regardless of initial state
 
-
-
-    //Coin acceptor enable/disable
-    | SetCoinAcceptorEnabled  | bool             | ()                   | "setcoinacceptorenabled" |
+    //Coin acceptor endpoints
+    | SetCoinAcceptorEnabled  | bool             | ()                   | "setcoinacceptorenabled"  |
+    | DispenseCoins           | u16              | u16                  | "dispensecoins"           | //Returns amount ACTUALLY refunded
 
 }
 
