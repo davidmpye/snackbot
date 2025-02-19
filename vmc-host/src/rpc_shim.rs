@@ -115,7 +115,6 @@ pub(crate) fn spawn_lcd_driver(lcd_command_channel_rx:Receiver<LcdCommand>) {
         lcd_command_channel_rx,
         async move {
             let mut lcd = get_lcd_driver().await;
-            println!("LCD Driver connected OK");
             loop {
                 if let Ok(cmd) = lcd_command_channel_rx.recv().await {
                     match cmd {
