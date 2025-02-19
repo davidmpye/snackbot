@@ -5,8 +5,8 @@ use lcd_driver::{LcdDriver, LcdCommand};
 mod vmc_driver;
 use vmc_driver::VmcDriver;
 
-mod postcard_shim;
-use postcard_shim::{spawn_vmc_driver, spawn_lcd_driver};
+mod rpc_shim;
+use rpc_shim::{spawn_vmc_driver, spawn_lcd_driver};
 
 use vmc_icd::dispenser::{DispenserAddress, Dispenser};
 use vmc_icd::EventTopic;
@@ -23,7 +23,6 @@ use gtk4::glib;
 use glib::clone;
 
 use async_channel::Sender;
-
 
 #[derive (Copy, Clone)]
 pub enum VmcCommand {
@@ -187,6 +186,7 @@ impl App {
                             else  if key == '\n' { //Enter
                                 if app.row_selected.is_some() && app.col_selected.is_some() {
                                     println!("Sending vend command");
+                                    let _ = lcd_command_channel_tx.send_blocking(LcdCommand::SetText(format!("Snackbot dispensing: {}{}", app.row_selected.unwrap(), app.col_selected.unwrap()), String::from("")));
                                     let _ = vmc_command_channel_tx.send_blocking(VmcCommand::VendItem(app.row_selected.unwrap(), app.col_selected.unwrap()));
                                 }
                             }

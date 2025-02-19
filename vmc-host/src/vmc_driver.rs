@@ -68,7 +68,4 @@ impl VmcDriver {
         let amount_refunded = self.driver.send_resp::<DispenseCoins>(&value).await?;
         Ok(amount_refunded)
     }
-
-
-
 }
