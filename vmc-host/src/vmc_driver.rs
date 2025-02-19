@@ -20,6 +20,26 @@ impl<E> From<HostErr<WireError>> for VmcClientError<E> {
     }
 }
 
+use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting,};
+
+#[derive (Copy, Clone)]
+pub enum VmcCommand {
+    VendItem(char,char),
+    ForceVendItem(char, char),
+    GetMachineMap(),                //Get a vec of dispenser
+    GetDispenser(char,char),            //Get information about a specific dispenser
+    SetCoinAcceptorEnabled(bool),   //Whether the coin acceptor should accept coins
+    RefundCoins(u16),               //Refund amount
+}
+
+pub enum VmcResponse {
+    MachineMap(Vec<Dispenser>),
+    Dispenser(Dispenser),
+    //Vend result for a vend request
+    CoinAcceptorEvent(CoinAcceptorEvent),
+    CoinInsertedEvent(CoinInserted)
+}
+
 pub struct VmcDriver {
     pub driver: HostClient<WireError>,
 }
