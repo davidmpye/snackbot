@@ -1,12 +1,12 @@
 
 mod lcd_driver;
-use lcd_driver::LcdDriver;
+use lcd_driver::{LcdDriver, LcdCommand};
 
 mod vmc_driver;
 use vmc_driver::VmcDriver;
 
 mod postcard_shim;
-use postcard_shim::spawn_postcard_shim;
+use postcard_shim::{spawn_vmc_driver, spawn_lcd_driver};
 
 use vmc_icd::dispenser::{DispenserAddress, Dispenser};
 use vmc_icd::EventTopic;
@@ -24,6 +24,7 @@ use glib::clone;
 
 use async_channel::Sender;
 
+
 #[derive (Copy, Clone)]
 pub enum VmcCommand {
     VendItem(char,char),
@@ -40,11 +41,6 @@ pub enum VmcResponse {
     //Vend result for a vend request
     CoinAcceptorEvent(CoinAcceptorEvent),
     CoinInsertedEvent(CoinInserted)
-}
-
-pub enum LcdCommand {
-    SetText(String, String),
-    SetBackLight(bool),
 }
 
 fn keypress_listener(sender: Sender<Event>) -> gtk4::EventControllerKey {
@@ -152,7 +148,11 @@ impl App {
             let (vmc_response_channel_tx, vmc_response_channel_rx) = async_channel::unbounded::<VmcResponse>();
             let (vmc_command_channel_tx, vmc_command_channel_rx) = async_channel::unbounded::<VmcCommand>();
             //Spawn the Postcard-RPC shim, which will run on the Tokio executor
-            spawn_postcard_shim(vmc_response_channel_tx.clone(), vmc_command_channel_rx.clone());
+            spawn_vmc_driver(vmc_response_channel_tx.clone(), vmc_command_channel_rx.clone());
+    
+            //Spawn the LCD driver channel so we can post messages to screen
+            let (lcd_command_channel_tx, lcd_command_channel_rx) = async_channel::unbounded::<LcdCommand>();
+            spawn_lcd_driver(lcd_command_channel_rx);
 
             //GUI channel
             let (gui_tx, gui_rx) = async_channel::unbounded();
@@ -162,7 +162,13 @@ impl App {
                 vmc_command_channel_tx,
                 #[strong]
                 vmc_response_channel_rx,
+                #[strong]
+                lcd_command_channel_tx,
                 async move {
+
+                //Welcome message
+                let _ = lcd_command_channel_tx.send_blocking(LcdCommand::SetText(String::from("Snackbot (C)"), String::from("I sell snacks")));
+
                 while let Ok(event)= gui_rx.recv().await {  
                     match event {
                         Event::Keypress(key) => {
@@ -181,7 +187,7 @@ impl App {
                             else  if key == '\n' { //Enter
                                 if app.row_selected.is_some() && app.col_selected.is_some() {
                                     println!("Sending vend command");
-                                    vmc_command_channel_tx.send_blocking(VmcCommand::VendItem(app.row_selected.unwrap(), app.col_selected.unwrap()));
+                                    let _ = vmc_command_channel_tx.send_blocking(VmcCommand::VendItem(app.row_selected.unwrap(), app.col_selected.unwrap()));
                                 }
                             }
                             else if key == '\x1B' { //Esc

@@ -8,6 +8,11 @@ use keyboard_icd::{SetBacklight, SetText};
 
 use std::convert::Infallible;
 
+pub enum LcdCommand {
+    SetText(String, String),
+    SetBackLight(bool),
+}
+
 #[derive(Debug)]
 pub enum LcdClientError<E> {
     Comms(HostErr<WireError>),

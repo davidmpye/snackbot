@@ -8,6 +8,11 @@ use crate::EventTopic;
 use crate::VmcResponse;
 use crate::VmcCommand;
 
+use crate::LcdCommand;
+
+
+use crate::LcdDriver;
+
 use crate::DispenserAddress;
 //Spawn a tokio runtime instance for the postcard-rpc device handlers
 fn runtime() -> &'static Runtime {
@@ -17,7 +22,7 @@ fn runtime() -> &'static Runtime {
     })
 }
 
-pub(crate) fn spawn_postcard_shim(vmc_response_channel_tx:Sender<VmcResponse>, vmc_command_channel_rx:Receiver<VmcCommand>) {
+pub(crate) fn spawn_vmc_driver(vmc_response_channel_tx:Sender<VmcResponse>, vmc_command_channel_rx:Receiver<VmcCommand>) {
      //Spawn off the VMC task on the tokio runtime
     runtime().spawn(clone!(
         #[strong] 
@@ -56,8 +61,7 @@ pub(crate) fn spawn_postcard_shim(vmc_response_channel_tx:Sender<VmcResponse>, v
                                         match vmc.dispense(DispenserAddress {row, col}).await {
                                             Ok(()) => {
                                                 println!("Vend success");
-                                                //We need to deduct the cost of the item from the remaining credit.
-
+                                                //return result
                                             },
                                             Err(e) => {
                                                 println!("Error - failed to vend");
@@ -72,9 +76,50 @@ pub(crate) fn spawn_postcard_shim(vmc_response_channel_tx:Sender<VmcResponse>, v
                 }
             }
             else {
-                println!("VMC task failed to connect");
+                println!("VMC driver failed to connect");
             }
             
         }
     ));
 }
+
+pub(crate) fn spawn_lcd_driver(lcd_command_channel_rx:Receiver<LcdCommand>) {
+    runtime().spawn(clone!(
+        #[strong] 
+        lcd_command_channel_rx,
+        async move {
+            if let Ok(mut lcd) = LcdDriver::new() {
+                println!("LCD Driver connected OK");
+                loop {
+                    if let Ok(cmd) = lcd_command_channel_rx.recv().await {
+                        match cmd {
+                            LcdCommand::SetText(l1,l2) => {
+                                match lcd.set_text(l1,l2).await {
+                                    Ok(_x) => {},
+                                    Err(_x) => {
+                                        println!("LCD set text error");
+                                    }
+                                }
+                            },
+                            LcdCommand::SetBackLight(state) => {
+                                match lcd.set_backlight(state).await {
+                                    Ok(_x) => {},
+                                    Err(_x) => {   
+                                        println!("LCD set backlight error");
+                                    }
+                                }
+                            },
+                        }
+                    }
+                    else {
+                        println!("LCD driver command rx err");
+                    }      
+                }          
+            }
+            else {
+                println!("LCD driver failed to connect");
+            }
+        }
+    ));
+}
+ 
