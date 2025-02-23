@@ -5,17 +5,12 @@ use std::sync::OnceLock;
 use glib_macros::clone;
 use async_channel::{Sender, Receiver};
 
-use crate::VmcDriver;
 use crate::EventTopic;
-use crate::VmcResponse;
-use crate::VmcCommand;
 
-use crate::LcdCommand;
-
-
-use crate::LcdDriver;
-
+use crate::{VmcDriver, VmcCommand, VmcResponse};
+use crate::{LcdDriver, LcdCommand};
 use crate::DispenserAddress;
+
 //Spawn a tokio runtime instance for the postcard-rpc device handlers
 fn runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
