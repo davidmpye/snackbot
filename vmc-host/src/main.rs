@@ -1,7 +1,15 @@
 mod stock_info;
+use crate::stock_info::get_stock_item;
 
+mod make_selection_box;
+use crate::make_selection_box::MakeSelectionBox;
+mod confirm_item_box;
+use crate::confirm_item_box::ConfirmItemBox;
+mod make_payment_box;
+use crate::make_payment_box::MakePaymentBox;
 
 mod lcd_driver;
+use gtk4::builders::ImageBuilder;
 use lcd_driver::{LcdCommand, LcdDriver};
 
 mod vmc_driver;
@@ -22,7 +30,7 @@ const VMC_DEVICE_NAME: &str = "vmc";
 use glib::clone;
 use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box, Button, Label, Stack, Image};
+use gtk4::{Application, ApplicationWindow, Box, Button, Image, Label, Stack};
 
 use std::path::Path;
 
@@ -85,11 +93,11 @@ struct App {
     pub credit: u16,
     pub row_selected: Option<char>,
     pub col_selected: Option<char>,
-    pub select_item_box: Box,
 
-    pub item_label: Label,
-    pub tick_or_cross_label: Label,
     pub stack: Stack,
+    pub make_selection_box: MakeSelectionBox,
+    pub confirm_item_box: ConfirmItemBox,
+    pub make_payment_box: MakePaymentBox,
 
     pub lcd_channel: Sender<LcdCommand>,
     pub vmc_command_channel: Sender<VmcCommand>,
@@ -105,56 +113,21 @@ impl App {
         event_channel_rx: Receiver<Event>,
         lcd_channel: Sender<LcdCommand>,
         vmc_command_channel: Sender<VmcCommand>,
-        vmc_response_channel: Receiver<VmcResponse>
+        vmc_response_channel: Receiver<VmcResponse>,
     ) -> Self {
         //All the pages are stored in this widget stack
         let stack = Stack::builder().build();
 
-        let select_item_box = Box::builder()
-            .orientation(gtk4::Orientation::Vertical)
-            .name("select_item_box")
-            .build();
+        let make_selection_box = MakeSelectionBox::new();
+        stack.add_named(&make_selection_box, Some("make_selection_box"));
 
-        select_item_box.append(
-            &Label::builder()
-                .use_markup(true)
-                .justify(gtk4::Justification::Center)
-                .label("<span font=\"Arial Rounded MT 60\">Please\nselect\nan item\n\n</span>")
-                .build(),
-        );
+        let confirm_item_box = ConfirmItemBox::new();
+        stack.add_named(&confirm_item_box, Some("confirm_item_box"));
 
-        let item_label = Label::builder()
-            .use_markup(true)
-            .justify(gtk4::Justification::Center)
-            .label("<span font=\"Arial Rounded MT Bold 80\">_ _\n</span>")
-            .build();
+        let make_payment_box = MakePaymentBox::new();
+        stack.add_named(&make_payment_box, Some("make_payment_box"));
 
-        select_item_box.append(&item_label);
-
-        //Starts life hidden
-        let tick_or_cross_label = Label::builder()
-            .use_markup(true)
-            .justify(gtk4::Justification::Center)
-            .label("<span font=\"Arial Rounded MT 50\">\n✅ to vend\n❌ to cancel</span>")
-            .visible(false)
-            .build();
-
-        select_item_box.append(&tick_or_cross_label);
-        let _ = stack.add_named(&select_item_box,Some("select_item_box"));
-        
-        let confirm_item_box  = Box::builder()
-            .orientation(gtk4::Orientation::Vertical)
-            .build();
-
-
-        let file = Path::new("./scampi.jpg");
-        let e = Image::new();
-        e.set_from_file(Some(file));
-        e.set_size_request(200,300);
-        
-        confirm_item_box.append(&e);
-
-        let _ = stack.add_named(&confirm_item_box, Some("confirm_item_box"));
+        //  let _ = stack.add_named(&confirm_item_box, Some("confirm_item_box"));
 
         let window = ApplicationWindow::builder()
             .application(app)
@@ -173,10 +146,12 @@ impl App {
             credit: 0,
             row_selected: None,
             col_selected: None,
-            select_item_box,
             stack,
-            item_label,
-            tick_or_cross_label,
+
+            make_selection_box,
+            confirm_item_box,
+            make_payment_box,
+
             lcd_channel,
             vmc_command_channel,
             vmc_response_channel,
@@ -203,22 +178,57 @@ impl App {
                                 self.row_selected = None;
                             }
                             self.col_selected = Some(key);
-                        } else if key == '\n' {
-                            //Green tick!
-                            //Move into Confirm state if row and column selected, else ignore
-                            if self.row_selected.is_some() && self.col_selected.is_some() {
-                                self.state = AppState::Vending;
-                            }
-                        } else if key == '\x1B' {
+                        } else if key == '\x1b' {
                             //Red X - clear selection
                             self.row_selected = None;
                             self.col_selected = None;
+                        }
+
+                        //If now a row and col are selected, go to confirmation screen
+                        if self.row_selected.is_some() && self.col_selected.is_some() {
+                            self.state = AppState::AwaitingConfirmation;
                         }
                     }
                     //Only keypress events accepted in idle state
                     _ => {
                         println!("Unexpected event in idle state")
                     }
+                }
+            }
+            AppState::AwaitingConfirmation => {
+                match event {
+                    Event::Keypress(key) => {
+                        match key {
+                            '\n' => {
+                                //Into payment sate
+                                self.state = AppState::AwaitingPayment;
+                            }
+                            '\x1b' => {
+                                //Cancel
+                                self.row_selected = None;
+                                self.col_selected = None;
+                                self.state = AppState::Idle;
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            AppState::AwaitingPayment => {
+                match event {
+                    Event::Keypress(key) => {
+                        match key {
+                            '\x1b' => {
+                                //Cancel
+                                self.row_selected = None;
+                                self.col_selected = None;
+                                self.state = AppState::Idle;
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
                 }
             }
             _ => {}
@@ -238,17 +248,62 @@ impl App {
         //Display appropriate state
         match self.state {
             AppState::Idle => {
-                println!("INIDLE");
                 //In this state, we should be showing the select item widgetstack 'page'
-                self.stack.set_visible_child(&self.stack.child_by_name("select_item_box").unwrap());
-                //get it to update its' info
-                //self.item_label.set_label("");
-            },
-            AppState::Vending => {
-                println!("INVEND");
-                self.stack.set_visible_child(&self.stack.child_by_name("confirm_item_box").unwrap());
+                self.stack.set_visible_child(
+                    &self
+                        .stack
+                        .child_by_name("make_selection_box")
+                        .expect("Error: Make selection box is missing from stack"),
+                );
+                let row_char = {
+                    if self.row_selected.is_none() {
+                        '_'
+                    } else {
+                        self.row_selected.unwrap()
+                    }
+                };
+                let col_char = {
+                    if self.col_selected.is_none() {
+                        '_'
+                    } else {
+                        self.col_selected.unwrap()
+                    }
+                };
             }
-            _=>{},
+            AppState::AwaitingConfirmation => {
+                match get_stock_item(DispenserAddress {
+                    row: self.row_selected.unwrap(),
+                    col: self.col_selected.unwrap(),
+                }) {
+                    Some(item) => {
+                        self.confirm_item_box.set_name(item.name);
+                        self.confirm_item_box.set_image(item.image_url);
+                        self.confirm_item_box.set_price(item.price);
+                        self.stack.set_visible_child(
+                            &self
+                                .stack
+                                .child_by_name("confirm_item_box")
+                                .expect("Error: Confirm item box is missing from stack"),
+                        );
+                    }
+                    None => {
+                        //Invalid, should say so.
+                        self.row_selected = None;
+                        self.col_selected = None;
+                        self.state = AppState::Idle;
+                        self.update_ui();
+                    }
+                }
+            }
+            AppState::AwaitingPayment => {
+                self.stack.set_visible_child(
+                    &self
+                        .stack
+                        .child_by_name("make_payment_box")
+                        .expect("Error: Make payment box is missing from stack!"),
+                );
+            }
+            _ => {}
         }
     }
 }
@@ -277,17 +332,15 @@ fn main() -> glib::ExitCode {
             &app,
             event_channel_tx.clone(),
             event_channel_rx.clone(),
-        lcd_command_channel_tx.clone(),
+            lcd_command_channel_tx.clone(),
             vmc_command_channel_tx.clone(),
             vmc_response_channel_rx.clone(),
         );
-        
+
         //Spawn the main loop onto the GLib event loop
-        glib::MainContext::default().spawn_local(
-            async move {
-                app.main_loop().await;
-            }
-        );
+        glib::MainContext::default().spawn_local(async move {
+            app.main_loop().await;
+        });
     });
 
     app.run()

@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 use crate::DispenserAddress;
 pub struct StockItem {
-    address: DispenserAddress,
-    name: String,
-    image_url: PathBuf,
+    pub address: DispenserAddress,
+    pub name: String,
+    pub image_url: String,
+    pub price: u16,
 }
 
 pub fn get_stock_item(address: DispenserAddress) -> Option<StockItem> {
@@ -12,14 +13,16 @@ pub fn get_stock_item(address: DispenserAddress) -> Option<StockItem> {
             Some(StockItem { 
                 address,
                 name: String::from("Scampi Fries"),
-                image_url: PathBuf::from("./scampi.jpg"),
+                image_url: String::from("./scampi.jpg"),
+                price: 100,
             })
         },
         DispenserAddress{row:'B',col:'0'} => {
             Some(StockItem { 
                 address,
                 name: String::from("Chilli Doritos"),
-                image_url: PathBuf::from("./doritos.jpg"),
+                image_url: String::from("./doritos.jpg"),
+                price: 100,
             })
         },
         _ => None,
