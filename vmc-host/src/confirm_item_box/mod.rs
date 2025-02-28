@@ -35,7 +35,6 @@ impl ConfirmItemBox {
 
     pub fn set_image(&self, path: String) {
         let i = imp::ConfirmItemBox::from_obj(self);
-        println!("Set from file {}", path);
         i.item_image.set_from_file(Some(&path));
     }
 }

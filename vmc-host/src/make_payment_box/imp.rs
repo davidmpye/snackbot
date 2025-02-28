@@ -4,7 +4,6 @@ use gtk4::{Box, Image, Label};
 
 #[derive(Default)]
 pub struct MakePaymentBox {
-    pub c: u16,
     pub item_image: Image,
     pub item_name: Label,
     pub item_price: Label,
@@ -42,7 +41,7 @@ impl ObjectImpl for MakePaymentBox {
             &Label::builder()
                 .use_markup(true)
                 .justify(gtk4::Justification::Center)
-                .label("<span font=\"Arial Rounded MT 50\">or\ninsert coins</span>")
+                .label("<span font=\"Arial Rounded MT 50\">or\nInsert Coins</span>")
                 .build(),
         );
         self.obj().append(

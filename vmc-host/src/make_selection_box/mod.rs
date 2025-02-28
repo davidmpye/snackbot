@@ -15,27 +15,4 @@ impl MakeSelectionBox {
     pub fn new() -> Self {
         Object::builder().build()
     }
-
-    pub fn set_price(&self, price: u16) {
-        let i = imp::MakeSelectionBox::from_obj(self);
-        i.item_price.set_label(&format!(
-            "<span font=\"Arial Rounded MT 50\">Price: £{}.{:02}</span>",
-            price / 100,
-            price % 100
-        ));
-    }
-
-    pub fn set_name(&self, label: String) {
-        let i = imp::MakeSelectionBox::from_obj(self);
-        i.item_name.set_label(&format!(
-            "<span font=\"Arial Rounded MT 50\">{}</span>",
-            &label
-        ));
-    }
-
-    pub fn set_image(&self, path: String) {
-        let i = imp::MakeSelectionBox::from_obj(self);
-        println!("Set from file {}", path);
-        i.item_image.set_from_file(Some(&path));
-    }
 }

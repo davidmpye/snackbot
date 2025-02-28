@@ -76,8 +76,8 @@ fn keypress_listener(sender: Sender<Event>) -> gtk4::EventControllerKey {
     event_controller
 }
 
+//These are events the main loop should respond to
 enum Event {
-    Clicked,
     Keypress(char),
 }
 
@@ -101,7 +101,6 @@ struct App {
 
     pub lcd_channel: Sender<LcdCommand>,
     pub vmc_command_channel: Sender<VmcCommand>,
-    pub vmc_response_channel: Receiver<VmcResponse>,
     pub event_channel_tx: Sender<Event>,
     pub event_channel_rx: Receiver<Event>,
 }
@@ -113,7 +112,6 @@ impl App {
         event_channel_rx: Receiver<Event>,
         lcd_channel: Sender<LcdCommand>,
         vmc_command_channel: Sender<VmcCommand>,
-        vmc_response_channel: Receiver<VmcResponse>,
     ) -> Self {
         //All the pages are stored in this widget stack
         let stack = Stack::builder().build();
@@ -154,7 +152,6 @@ impl App {
 
             lcd_channel,
             vmc_command_channel,
-            vmc_response_channel,
             event_channel_rx,
             event_channel_tx,
         }
@@ -202,6 +199,8 @@ impl App {
                             '\n' => {
                                 //Into payment sate
                                 self.state = AppState::AwaitingPayment;
+                                //Enable coin acceptor
+                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(true));
                             }
                             '\x1b' => {
                                 //Cancel
@@ -224,10 +223,12 @@ impl App {
                                 self.row_selected = None;
                                 self.col_selected = None;
                                 self.state = AppState::Idle;
+                                //Disable coin acceptor
+                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
                             }
                             _ => {}
                         }
-                    }
+                    },
                     _ => {}
                 }
             }
@@ -334,13 +335,40 @@ fn main() -> glib::ExitCode {
             event_channel_rx.clone(),
             lcd_command_channel_tx.clone(),
             vmc_command_channel_tx.clone(),
-            vmc_response_channel_rx.clone(),
         );
 
         //Spawn the main loop onto the GLib event loop
         glib::MainContext::default().spawn_local(async move {
             app.main_loop().await;
         });
+        
+        let rx = vmc_response_channel_rx.clone();
+        let tx = event_channel_tx.clone();
+        glib::MainContext::default().spawn_local( async move {
+            loop {
+                match rx.recv().await {
+                    Ok(event) => {
+                        match event {
+                            VmcResponse::CoinInsertedEvent(coin) => {
+
+                            },
+
+                           // CoinInserted(coin) => {}
+                            _ => {
+                                println!("Ignored event");
+                            }
+                        }
+                    },
+                    Err(e) => {
+                    
+                    },
+                }
+            }
+
+        });
+        //Spawn the VMC listener loop onto the main glib event loop
+        //glib::MainC
+
     });
 
     app.run()

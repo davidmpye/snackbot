@@ -98,6 +98,8 @@ define_dispatch! {
         | Dispense                  | async       | dispense_handler            |
         | ForceDispense             | async       | force_dispense_handler      |
         | GetDispenserInfo          | async       | get_dispenser_info_handler  |
+
+
     };
     topics_in: {
         list: TOPICS_IN_LIST;
@@ -123,6 +125,7 @@ async fn get_dispenser_info_handler(_context: &mut Context, _header: VarHeader, 
     let mut c = MOTOR_DRIVER.lock().await;
     c.as_mut().expect("Motor controller missing from mutex").getDispenser(address).await
 }
+
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
