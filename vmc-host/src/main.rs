@@ -207,6 +207,8 @@ impl App {
                                 self.row_selected = None;
                                 self.col_selected = None;
                                 self.state = AppState::Idle;
+                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
+
                             }
                             _ => {}
                         }

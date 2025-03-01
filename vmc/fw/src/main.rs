@@ -12,6 +12,7 @@ use embassy_executor::Spawner;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::{mutex};
 
 use embassy_usb::Config as UsbConfig;
 
@@ -22,11 +23,11 @@ use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
 use embassy_rp::pio;
 
-use embassy_time::Duration;
+use embassy_time::{Timer,Duration};
 use static_cell::{ConstStaticCell, StaticCell};
 
 use vmc_icd::{
-    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, ForceDispense, Dispense, GetDispenserInfo, CoinInsertedTopic, EventTopic
+    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, ForceDispense, Dispense, GetDispenserInfo, CoinInsertedTopic, EventTopic,SetCoinAcceptorEnabled,
 };
 use vmc_icd::coinacceptor::{CoinInserted,CoinRouting, CoinAcceptorEvent};
 
@@ -43,13 +44,11 @@ use postcard_rpc::{
     server::{
         impls::embassy_usb_v0_4::{
             dispatch_impl::{WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl},
-            PacketBuffers,
+            PacketBuffers, EUsbWireTx,
         },
-        Dispatch, Sender, Server,
+        Dispatch, Sender, Server, WireTx
     },
 };
-
-
 
 use usb_device_handler::UsbDeviceHandler;
 use usb_device_handler::usb_task;
@@ -72,6 +71,8 @@ static MOTOR_DRIVER: Mutex<
     CriticalSectionRawMutex,
     Option<MotorDriver>,
 > = Mutex::new(None);
+
+static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
@@ -99,6 +100,7 @@ define_dispatch! {
         | ForceDispense             | async       | force_dispense_handler      |
         | GetDispenserInfo          | async       | get_dispenser_info_handler  |
 
+        | SetCoinAcceptorEnabled    | async       | set_coin_acceptor_enabled_handler   |
 
     };
     topics_in: {
@@ -126,14 +128,30 @@ async fn get_dispenser_info_handler(_context: &mut Context, _header: VarHeader, 
     c.as_mut().expect("Motor controller missing from mutex").getDispenser(address).await
 }
 
+async fn set_coin_acceptor_enabled_handler (_context: &mut Context, _header: VarHeader, enable: bool) {
+    let mut b = MDB_DRIVER.lock().await;
+    let mdb = b.as_mut().expect("MDB driver not present");  
+    match mdb.coin_acceptor.take() {
+        Some(mut coin_acceptor) => {
+            if enable {
+                let _  = coin_acceptor.enable_coins(mdb, 0xFFFF).await;
+            }
+            else {
+                let _  = coin_acceptor.enable_coins(mdb, 0x0000).await;
+            }
+            mdb.coin_acceptor = Some(coin_acceptor);
+        },
+        None => {
+            error!("Coin acceptor enable function called, but no coin acceptor present")
+        },
+    }
+}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
-
-    // Create the driver, from the HAL.
+    // Create the driver from the HAL.
     let driver = UsbDriver::new(p.USB, Irqs);
-
     static CONFIG : StaticCell<embassy_usb::Config> = StaticCell::new();
     // Create embassy-usb Config
     let config = CONFIG.init(UsbConfig::new(0xDEAD, 0xBEEF));
@@ -194,57 +212,22 @@ async fn main(spawner: Spawner) {
         let mut m = MOTOR_DRIVER.lock().await;
         *m = Some(interface);
     }
-
     // Build the builder - USB device will be run by usb_task
     let usb = builder.build();
-
     //USB device handler task
     spawner.must_spawn(usb_task(usb));
 
-    let uart:PioUart<'_, 0> = PioUart::new(p.PIN_21, p.PIN_20, p.PIO0,Duration::from_millis(25), Duration::from_millis(3));
-    let mut mdb = Mdb::new(uart);
-    
-    match CoinAcceptor::init(&mut mdb).await {
-        Some(mut b) => {
-            if let Some(features) = &b.l3_features {
-                info!("L3 coin acceptor OK, Manufacturer: {}, Model {}, S/N {}", features.manufacturer_code.as_str(), features.model.as_str(), features.serial_number.as_str());
-            }
-            else {
-                info!("Level 2 coin acceptor OK");
-            }
-        b.enable_coins(&mut mdb, 0xffff).await;
-        let mut seq = 0x00u16;
-        loop {
-            for e in b.poll(&mut mdb).await.iter() {
-                match e {
-                    Some(event) => {
-                        match event {
-                            PollEvent::Status(bytes) => {
-                                info!("Let's pretend it was always escrow");
-                                server.sender().publish::<EventTopic>(seq.into(), &CoinAcceptorEvent::EscrowPressed).await;            
-                            }
-                            PollEvent::Coin(x) => {
-                                info!("Coin inserted - unscaled value: {}", x.unscaled_value);     
-                                let coinevent = CoinInserted {
-                                    value: x.unscaled_value,
-                                    routing: CoinRouting::CashBox //fixme!
-                                };
-                                server.sender().publish::<CoinInsertedTopic>(seq.into(), &coinevent).await;
-                            }
-                            _=> {},
-                        }
-                    },
-                     _ =>{},
-                }
-            }
-        }
-    },
-        _ => {
-            error!("Unable to initialise coin acceptor");
-        },
+    //Set up and spawn the coin acceptor task
+    {
+        //Set up the 9-bit PIO backed UART the MDB library requires
+        let uart:PioUart<'_, 0> = PioUart::new(p.PIN_21, p.PIN_20, p.PIO0,Duration::from_millis(25), Duration::from_millis(3));
+        let mut mdb = Mdb::new(uart);
+        mdb.init_peripherals().await;
+        let mut m = MDB_DRIVER.lock().await;
+        *m = Some(mdb);
     }
 
- 
+    spawner.must_spawn(coinacceptor_poll_task(server.sender().clone()));
     //Postcard server mainloop just runs here
     loop {
         let _ = server.run().await;
@@ -252,3 +235,77 @@ async fn main(spawner: Spawner) {
 }
 
 
+
+#[embassy_executor::task]
+pub async fn coinacceptor_poll_task(sender: Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>) {
+    {
+        let mut b = MDB_DRIVER.lock().await;
+        let mdb = b.as_mut().expect("MDB driver not present");  
+        match mdb.coin_acceptor.take() {
+            Some(mut coinacceptor) =>  {
+                if let Some(features) = &coinacceptor.l3_features {
+                    info!("L3 coin acceptor OK, Manufacturer: {}, Model {}, S/N {}", features.manufacturer_code.as_str(), features.model.as_str(), features.serial_number.as_str());
+                }
+                else {
+                    info!("Level 2 coin acceptor OK");
+                }
+                //Return the coin acceptor
+                mdb.coin_acceptor = Some(coinacceptor);   
+            },
+            None => {
+                info!("No coin acceptor present")
+            }
+        }
+    }
+
+    let mut seq = 0x00u16;
+    loop {
+            //Perform the poll
+            let poll_response = {
+                let mut b = MDB_DRIVER.lock().await;
+                let mdb = b.as_mut().expect("MDB driver not present");  
+                match mdb.coin_acceptor.take() {
+                    Some(mut coin_acceptor) => {
+                        let response = coin_acceptor.poll(mdb).await;
+                        mdb.coin_acceptor = Some(coin_acceptor);
+                        response       
+                    },
+                    None => {
+                        [None;16]
+                    },
+                }
+            };
+
+            //Handle the poll events
+            for e in poll_response.iter() {
+                match e {
+                    Some(event) => {
+                        match event {
+                            PollEvent::Status(bytes) => {
+                                info!("Let's pretend it was always escrow");
+                                let _ = sender.publish::<EventTopic>(seq.into(), &CoinAcceptorEvent::EscrowPressed).await;   
+                                seq = seq.wrapping_add(1);         
+                            }
+                            PollEvent::Coin(x) => {
+                                info!("Coin inserted - unscaled value: {}", x.unscaled_value);     
+                                let coinevent = CoinInserted {
+                                    value: x.unscaled_value,
+                                    routing: CoinRouting::CashBox //fixme!
+                                };
+                                let _ = sender.publish::<CoinInsertedTopic>(seq.into(), &coinevent).await;
+                                seq = seq.wrapping_add(1);         
+                            }
+                            _=> {},
+                        }
+                    },
+                    _ =>{},
+                }
+            }
+            //Re-poll every 100mS
+            Timer::after_millis(100).await;
+        } 
+
+
+
+   
+}

@@ -79,6 +79,9 @@ pub(crate) fn spawn_vmc_driver(vmc_response_channel_tx:Sender<VmcResponse>, vmc_
                                         },
                                     }
                                 },
+                                VmcCommand::SetCoinAcceptorEnabled(enable) => {
+                                    let _ = vmc.set_coinacceptor_enabled(enable).await;
+                                },  
                                  _ => {},
                             }
                         }   
