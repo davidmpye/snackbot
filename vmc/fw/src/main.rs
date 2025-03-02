@@ -3,6 +3,8 @@
 
 mod motor_driver;
 mod usb_device_handler;
+mod mdb_driver;
+use mdb_driver::coinacceptor_poll_task;
 
 use embassy_sync::mutex::Mutex;
 
@@ -235,77 +237,3 @@ async fn main(spawner: Spawner) {
 }
 
 
-
-#[embassy_executor::task]
-pub async fn coinacceptor_poll_task(sender: Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>) {
-    {
-        let mut b = MDB_DRIVER.lock().await;
-        let mdb = b.as_mut().expect("MDB driver not present");  
-        match mdb.coin_acceptor.take() {
-            Some(mut coinacceptor) =>  {
-                if let Some(features) = &coinacceptor.l3_features {
-                    info!("L3 coin acceptor OK, Manufacturer: {}, Model {}, S/N {}", features.manufacturer_code.as_str(), features.model.as_str(), features.serial_number.as_str());
-                }
-                else {
-                    info!("Level 2 coin acceptor OK");
-                }
-                //Return the coin acceptor
-                mdb.coin_acceptor = Some(coinacceptor);   
-            },
-            None => {
-                info!("No coin acceptor present")
-            }
-        }
-    }
-
-    let mut seq = 0x00u16;
-    loop {
-            //Perform the poll
-            let poll_response = {
-                let mut b = MDB_DRIVER.lock().await;
-                let mdb = b.as_mut().expect("MDB driver not present");  
-                match mdb.coin_acceptor.take() {
-                    Some(mut coin_acceptor) => {
-                        let response = coin_acceptor.poll(mdb).await;
-                        mdb.coin_acceptor = Some(coin_acceptor);
-                        response       
-                    },
-                    None => {
-                        [None;16]
-                    },
-                }
-            };
-
-            //Handle the poll events
-            for e in poll_response.iter() {
-                match e {
-                    Some(event) => {
-                        match event {
-                            PollEvent::Status(bytes) => {
-                                info!("Let's pretend it was always escrow");
-                                let _ = sender.publish::<EventTopic>(seq.into(), &CoinAcceptorEvent::EscrowPressed).await;   
-                                seq = seq.wrapping_add(1);         
-                            }
-                            PollEvent::Coin(x) => {
-                                info!("Coin inserted - unscaled value: {}", x.unscaled_value);     
-                                let coinevent = CoinInserted {
-                                    value: x.unscaled_value,
-                                    routing: CoinRouting::CashBox //fixme!
-                                };
-                                let _ = sender.publish::<CoinInsertedTopic>(seq.into(), &coinevent).await;
-                                seq = seq.wrapping_add(1);         
-                            }
-                            _=> {},
-                        }
-                    },
-                    _ =>{},
-                }
-            }
-            //Re-poll every 100mS
-            Timer::after_millis(100).await;
-        } 
-
-
-
-   
-}
