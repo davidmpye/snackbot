@@ -14,7 +14,7 @@ endpoints! {
     omit_std = true;
     | EndpointTy              | RequestTy        | ResponseTy           | Path              |
     | ----------              | ---------        | ----------           | ----              |
-    | DispenseEndpoint | DispenserCommand | ()                   | "dispenser"       |
+    | DispenseEndpoint        | DispenserCommand | ()                   | "dispenser"       |
 
     //Coin acceptor endpoints
     | SetCoinAcceptorEnabled  | bool             | ()                   | "setcoinacceptorenabled"  |
