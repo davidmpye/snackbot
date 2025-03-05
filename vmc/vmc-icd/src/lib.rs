@@ -12,7 +12,7 @@ endpoints! {
     omit_std = true;
     | EndpointTy              | RequestTy        | ResponseTy           | Path              |
     | ----------              | ---------        | ----------           | ----              |
-    | DispenseEndpoint        | DispenserCommand | ()                   | "dispenser"       |
+    | DispenseEndpoint        | DispenseCommand | DispenseResult       | "dispenser"       |
 
 
 }

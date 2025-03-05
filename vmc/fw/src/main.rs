@@ -5,9 +5,8 @@ mod mdb_driver;
 mod motor_driver;
 mod usb_device_handler;
 
-
-use mdb_driver::coinacceptor_task;
-use motor_driver::{motor_driver_task};
+use mdb_driver::coinacceptor_poll_task;
+use motor_driver::motor_driver_dispense_task;
 
 use embassy_sync::mutex::Mutex;
 
@@ -27,11 +26,9 @@ use embassy_rp::{bind_interrupts, peripherals};
 use embassy_time::Duration;
 use static_cell::{ConstStaticCell, StaticCell};
 
-use vmc_icd::{DispenseEndpoint,
-    CoinInsertedTopic, EventTopic,
-    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+use vmc_icd::{
+    CoinInsertedTopic, DispenseEndpoint, EventTopic, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
 };
-
 
 use crate::motor_driver::MotorDriver;
 use pio_9bit_uart_async::PioUart;
@@ -39,10 +36,12 @@ use postcard_rpc::{
     define_dispatch,
     server::{
         impls::embassy_usb_v0_4::{
-            dispatch_impl::{WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl, spawn_fn},
-            EUsbWireTx, PacketBuffers, 
+            dispatch_impl::{
+                spawn_fn, WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl,
+            },
+            EUsbWireTx, PacketBuffers,
         },
-        Dispatch, Sender, Server,  SpawnContext
+        Dispatch, Sender, Server, SpawnContext,
     },
 };
 
@@ -63,21 +62,18 @@ type AppTx = WireTxImpl<ThreadModeRawMutex, AppDriver>;
 type AppRx = WireRxImpl<AppDriver>;
 type AppServer = Server<AppTx, AppRx, WireRxBuf, MyApp>;
 
-
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
 });
 
-pub struct Context {
-}
+pub struct Context {}
 
-pub struct SpawnCtx {
-}
+pub struct SpawnCtx {}
 
 impl SpawnContext for Context {
     type SpawnCtxt = SpawnCtx;
     fn spawn_ctxt(&mut self) -> Self::SpawnCtxt {
-        SpawnCtx {  }
+        SpawnCtx {}
     }
 }
 
@@ -95,9 +91,7 @@ define_dispatch! {
 
         | EndpointTy                | kind        | handler                     |
         | ----------                | ----        | -------                     |
-        | DispenseEndpoint          | spawn       | motor_driver_task           |
-
-      
+        | DispenseEndpoint          | spawn       | motor_driver_dispense_task  |
     };
     topics_in: {
         list: TOPICS_IN_LIST;
@@ -129,8 +123,7 @@ assign_resources! {
 
 static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);
 
-static MOTOR_DRIVER:Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
-
+static MOTOR_DRIVER: Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -163,12 +156,11 @@ async fn main(spawner: Spawner) {
 
     let resources = split_resources!(p);
 
-    static DISPENSER_DRIVER : Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
-      {
+    static DISPENSER_DRIVER: Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
+    {
         let mut m = DISPENSER_DRIVER.lock().await;
         *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
     }
-    
 
     let dispatcher = MyApp::new(context, spawner.into());
     let vkk = dispatcher.min_key_len();
@@ -199,9 +191,8 @@ async fn main(spawner: Spawner) {
         *m = Some(mdb);
     }
 
-
     //Spawn the coin acceptor task
-    spawner.must_spawn(coinacceptor_task(server.sender().clone()));
+    spawner.must_spawn(coinacceptor_poll_task(server.sender().clone()));
 
     //Postcard server mainloop runs here
     loop {

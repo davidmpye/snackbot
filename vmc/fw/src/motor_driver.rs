@@ -1,50 +1,38 @@
 use defmt::*;
 
-use embassy_time::{Duration, Timer, WithTimeout};
 use embassy_rp::gpio::{Level, OutputOpenDrain};
+use embassy_time::{Duration, Timer, WithTimeout};
 
 use vmc_icd::dispenser::{
-     CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserCommand, DispenserOption, DispenserType, MotorStatus 
+    CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenseCommand,
+    DispenserOption, DispenserType, MotorStatus,
 };
 use vmc_icd::DispenseEndpoint;
 
-use postcard_rpc::{
-    header::VarHeader,
-};
+use postcard_rpc::header::VarHeader;
 
-use crate::{MOTOR_DRIVER, MotorDriverResources, AppTx, Context, SpawnCtx, Sender};
+use crate::{AppTx, MotorDriverResources, Sender, SpawnCtx, MOTOR_DRIVER};
 
 #[embassy_executor::task]
-pub async fn motor_driver_task(
-    context: SpawnCtx,
+pub async fn motor_driver_dispense_task(
+    _context: SpawnCtx,
     header: VarHeader,
-    rqst: DispenserCommand,
+    rqst: DispenseCommand,
     sender: Sender<AppTx>,
 ) {
     let mut r = MOTOR_DRIVER.lock().await;
     let driver = r.as_mut().expect("Motor driver must be stored in mutex");
-    
-    match rqst {
-        DispenserCommand::Vend(addr) => {
+    let result = match rqst {
+        DispenseCommand::Vend(addr) => {
             info!("Attempted vend");
-            let result = driver.dispense(addr).await;
-        },
-        DispenserCommand::ForceVend(addr) => {
+            driver.dispense(addr).await
+        }
+        DispenseCommand::ForceVend(addr) => {
             info!("Attempted forcevend");
-            let result = driver.force_dispense(addr).await;            
-        },
-    }
-
-    //Fixme - send result back
-    if sender
-    .reply::<DispenseEndpoint>(header.seq_no, &())
-    .await
-    .is_err()
-    {   
-
-    }
-
-
+            driver.force_dispense(addr).await
+        }
+    };
+    let _ = sender.reply::<DispenseEndpoint>(header.seq_no, &result).await;
 }
 
 pub struct MotorDriver<'a> {
@@ -52,10 +40,10 @@ pub struct MotorDriver<'a> {
     clks: [OutputOpenDrain<'a>; 3],
     output_enable: OutputOpenDrain<'a>,
     flipflop_clr: OutputOpenDrain<'a>,
-    valid_addresses: [DispenserAddress;24],
+    valid_addresses: [DispenserAddress; 24],
 }
 
-impl <'a> MotorDriver <'a> {
+impl<'a> MotorDriver<'a> {
     pub(crate) async fn new(pins: MotorDriverResources) -> Self {
         let mut x = Self {
             bus: [
@@ -81,12 +69,10 @@ impl <'a> MotorDriver <'a> {
                 DispenserAddress { row: 'A', col: '2' },
                 DispenserAddress { row: 'A', col: '4' },
                 DispenserAddress { row: 'A', col: '6' },
-
                 DispenserAddress { row: 'B', col: '0' },
                 DispenserAddress { row: 'B', col: '2' },
                 DispenserAddress { row: 'B', col: '4' },
                 DispenserAddress { row: 'B', col: '6' },
-
                 DispenserAddress { row: 'C', col: '0' },
                 DispenserAddress { row: 'C', col: '1' },
                 DispenserAddress { row: 'C', col: '2' },
@@ -95,13 +81,11 @@ impl <'a> MotorDriver <'a> {
                 DispenserAddress { row: 'C', col: '5' },
                 DispenserAddress { row: 'C', col: '6' },
                 DispenserAddress { row: 'C', col: '7' },
-
                 //Our cans
                 DispenserAddress { row: 'E', col: '0' },
                 DispenserAddress { row: 'E', col: '1' },
                 DispenserAddress { row: 'E', col: '2' },
                 DispenserAddress { row: 'E', col: '3' },
-
                 DispenserAddress { row: 'F', col: '0' },
                 DispenserAddress { row: 'F', col: '1' },
                 DispenserAddress { row: 'F', col: '2' },
@@ -119,13 +103,13 @@ impl <'a> MotorDriver <'a> {
     }
 
     fn is_address_valid(&mut self, addr: DispenserAddress) -> bool {
-        self.valid_addresses.contains(&addr) 
+        self.valid_addresses.contains(&addr)
     }
 
     async fn stop_motors(&mut self) {
         //Stop all motors
         debug!("Stopped all motors");
-        self.write_bytes([0x00,0x00,0x00]).await;
+        self.write_bytes([0x00, 0x00, 0x00]).await;
     }
 
     async fn drive_motor(&mut self, addr: DispenserAddress) {
@@ -248,7 +232,11 @@ impl <'a> MotorDriver <'a> {
         }
     }
 
-    async fn pulse_motor_and_read_gpio(&mut self, addr: DispenserAddress , gpio_index: usize) -> Level {
+    async fn pulse_motor_and_read_gpio(
+        &mut self,
+        addr: DispenserAddress,
+        gpio_index: usize,
+    ) -> Level {
         //Power motor
         self.drive_motor(addr).await;
         //Buffer to READ mode
@@ -261,28 +249,33 @@ impl <'a> MotorDriver <'a> {
         state
     }
 
-    pub async fn getDispenser(&mut self, addr: DispenserAddress) -> DispenserOption {
+    pub async fn get_dispenser(&mut self, addr: DispenserAddress) -> DispenserOption {
         if self.is_address_valid(addr) {
             Some(Dispenser {
                 address: addr,
-                dispenser_type: 
-                    match addr.row {
-                        'E' | 'F'  => DispenserType::Can,
-                        _ => DispenserType::Spiral,
-                    },
+                dispenser_type: match addr.row {
+                    'E' | 'F' => DispenserType::Can,
+                    _ => DispenserType::Spiral,
+                },
                 motor_status: self.motor_home_status(addr).await,
                 can_status: self.can_status(addr).await,
             })
-        }
-        else {
+        } else {
             None
         }
     }
 
-    async fn motor_home_status(&mut self, addr:DispenserAddress) -> MotorStatus {
-        let is_home = self.pulse_motor_and_read_gpio(addr, MotorDriver::motor_homed_gpio_index(addr)).await;
-        debug!("Checked to see if {}{} is home - {}", addr.row, addr.col, is_home == Level::High);
-        
+    async fn motor_home_status(&mut self, addr: DispenserAddress) -> MotorStatus {
+        let is_home = self
+            .pulse_motor_and_read_gpio(addr, MotorDriver::motor_homed_gpio_index(addr))
+            .await;
+        debug!(
+            "Checked to see if {}{} is home - {}",
+            addr.row,
+            addr.col,
+            is_home == Level::High
+        );
+
         if is_home == Level::High {
             MotorStatus::Ok
         } else {
@@ -290,25 +283,27 @@ impl <'a> MotorDriver <'a> {
         }
     }
 
-    async fn can_status(&mut self, addr:DispenserAddress) -> Option<CanStatus> {
+    async fn can_status(&mut self, addr: DispenserAddress) -> Option<CanStatus> {
         //Our can rows are E and F
         if addr.row != 'E' && addr.row != 'F' {
             debug!("Checked can status for non can row {}", addr.row);
             return None;
         }
 
-        let can_status_gpio:usize = match addr.row {
+        let can_status_gpio: usize = match addr.row {
             'E' => 5,
             'F' => 7,
-             _=> 0,
+            _ => 0,
         };
-        debug!("Checking can status for {}{}, GPIO {}", addr.row, addr.col, can_status_gpio);
+        debug!(
+            "Checking can status for {}{}, GPIO {}",
+            addr.row, addr.col, can_status_gpio
+        );
 
         let status = if self.pulse_motor_and_read_gpio(addr, can_status_gpio).await == Level::High {
             debug!("Has cans");
             CanStatus::Ok
-        }
-        else {
+        } else {
             debug!("Last can");
             CanStatus::LastCan
         };
@@ -330,7 +325,7 @@ impl <'a> MotorDriver <'a> {
         self.force_dispense(addr).await
     }
 
-    pub async fn force_dispense (&mut self, addr: DispenserAddress) -> DispenseResult {
+    pub async fn force_dispense(&mut self, addr: DispenserAddress) -> DispenseResult {
         debug!("Driving dispense motor at {}{}", addr.row, addr.col);
         self.drive_motor(addr).await;
         let home_gpio_index = MotorDriver::motor_homed_gpio_index(addr);

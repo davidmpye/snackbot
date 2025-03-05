@@ -50,7 +50,7 @@ pub enum CoinAcceptorResponse {
 pub static COIN_ACCEPTOR_CHANNEL: Channel<CriticalSectionRawMutex, ChannelMessage, 1> = Channel::new();
 
 #[embassy_executor::task]
-pub async fn coinacceptor_task(postcard_sender:  Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>) {
+pub async fn coinacceptor_poll_task(postcard_sender:  Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>) {
     loop {
         match coin_acceptor_init().await {
             Some(mut acceptor) => {
