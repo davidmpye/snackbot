@@ -229,8 +229,11 @@ impl App {
                                 self.state = AppState::Idle;
                                 //Disable coin acceptor
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
-                            }
-                            _ => {}
+                            },
+                            '\n' => {
+                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
+                            },
+                            _=> {},
                         }
                     },
                     Event::EscrowPressed => {
