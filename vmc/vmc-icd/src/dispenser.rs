@@ -5,6 +5,12 @@ use postcard_schema::Schema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq, Copy, Clone)]
+pub enum DispenserCommand {
+    Vend(DispenserAddress),
+    ForceVend(DispenserAddress),
+}
+
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq, Copy, Clone)]
 pub struct DispenserAddress {
     pub row: char,
     pub col: char,

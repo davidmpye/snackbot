@@ -9,25 +9,12 @@ use crate::dispenser::*;
 pub mod coinacceptor;
 use crate::coinacceptor::*;
 
-
-#[derive(Serialize, Deserialize, Schema, Debug, PartialEq)]
-pub struct ChillerStatus {
-    temp_setpoint: f32,    
-    current_temp: f32,
-    chiller_on: bool,
-    chiller_duty_cycle: u8,  //Averaged over preceding 24 hours as a %
-}
-
 endpoints! {
     list = ENDPOINT_LIST;
     omit_std = true;
     | EndpointTy              | RequestTy        | ResponseTy           | Path              |
     | ----------              | ---------        | ----------           | ----              |
-
-    //Dispenser endpoints
-    | GetDispenserInfo        | DispenserAddress | DispenserOption      | "dispenserinfo"   |   //Get current state of dispenser at a row/col address
-    | Dispense                | DispenserAddress | DispenseResult       | "dispence"        |
-    | ForceDispense           | DispenserAddress | DispenseResult       | "forcedispense"   |   //Attempt vend regardless of initial state
+    | DispenseEndpoint | DispenserCommand | ()                   | "dispenser"       |
 
     //Coin acceptor endpoints
     | SetCoinAcceptorEnabled  | bool             | ()                   | "setcoinacceptorenabled"  |

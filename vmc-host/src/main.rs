@@ -79,6 +79,8 @@ fn keypress_listener(sender: Sender<Event>) -> gtk4::EventControllerKey {
 //These are events the main loop should respond to
 enum Event {
     Keypress(char),
+    EscrowPressed,
+    CoinInserted(u16),
 }
 
 enum AppState {
@@ -231,7 +233,23 @@ impl App {
                             _ => {}
                         }
                     },
-                    _ => {}
+                    Event::EscrowPressed => {
+                        println!("Got escrow");
+                        //Also acts as cancel.
+                         //Cancel
+                         self.row_selected = None;
+                         self.col_selected = None;
+                         self.state = AppState::Idle;
+                         //Disable coin acceptor
+                         let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
+                    },
+                    Event::CoinInserted(value) => {
+                        //Update the credit
+                        println!("Got paid {}", value)
+                    }
+                    _ => {
+                        println!("Got escrow");
+                    }
                 }
             }
             _ => {}
@@ -352,13 +370,14 @@ fn main() -> glib::ExitCode {
                     Ok(event) => {
                         match event {
                             VmcResponse::CoinInsertedEvent(coin) => {
-
+                                tx.send(Event::CoinInserted(coin.value)).await;
                             },
-
-                           // CoinInserted(coin) => {}
-                            _ => {
-                                println!("Ignored event");
+                            VmcResponse::CoinAcceptorEvent(CoinAcceptorEvent::EscrowPressed) => {
+                                tx.send(Event::EscrowPressed).await;
                             }
+                            _ => {
+                                println!("Ignored an event");
+                            },
                         }
                     },
                     Err(e) => {

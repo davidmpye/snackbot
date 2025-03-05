@@ -42,6 +42,7 @@ embassy-usb = "0.4.0"
 postcard = "1.1.1"
 postcard-rpc = { version = "0.11.5", features = ["embassy-usb-0_4-server"] }
 mdb-async = { git = "https://github.com/davidmpye/mdb-async", version = "0.1.0" }
+assign-resources = "0.4.1"
 
 
 [profile.release]

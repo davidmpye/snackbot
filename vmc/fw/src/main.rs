@@ -1,10 +1,15 @@
 #![no_std]
 #![no_main]
 
+mod mdb_driver;
 mod motor_driver;
 mod usb_device_handler;
-mod mdb_driver;
-use mdb_driver::coinacceptor_poll_task;
+use embassy_sync::channel::Channel;
+use mdb_driver::coinacceptor_task;
+use mdb_driver::COIN_ACCEPTOR_CHANNEL;
+use mdb_driver::{ChannelMessage, CoinAcceptorResponse};
+
+use motor_driver::{motor_driver_task};
 
 use embassy_sync::mutex::Mutex;
 
@@ -14,51 +19,53 @@ use embassy_executor::Spawner;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::{mutex};
 
+use assign_resources::assign_resources;
 use embassy_usb::Config as UsbConfig;
 
-use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Pin};
-use embassy_rp::peripherals::{USB, PIO0};
+use embassy_rp::gpio::Pin;
+use embassy_rp::peripherals::{PIO0, USB};
+use embassy_rp::pio;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
-use embassy_rp::pio;
+use embassy_rp::{bind_interrupts, peripherals};
 
-use embassy_time::{Timer,Duration};
+use embassy_time::{Duration, Timer};
 use static_cell::{ConstStaticCell, StaticCell};
 
-use vmc_icd::{
-    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST, ForceDispense, Dispense, GetDispenserInfo, CoinInsertedTopic, EventTopic,SetCoinAcceptorEnabled,
+use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
+use vmc_icd::{DispenseEndpoint,
+    CoinInsertedTopic, EventTopic,
+    SetCoinAcceptorEnabled, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
 };
-use vmc_icd::coinacceptor::{CoinInserted,CoinRouting, CoinAcceptorEvent};
 
-use vmc_icd::dispenser::{CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption, DispenserType, 
-    MotorStatus};
+use vmc_icd::dispenser::{
+    CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption,
+    DispenserType, MotorStatus,
+};
 
-
-use pio_9bit_uart_async::PioUart;
-use embedded_io_async::{Read, Write};
 use crate::motor_driver::MotorDriver;
+use embedded_io_async::{Read, Write};
+use pio_9bit_uart_async::PioUart;
 use postcard_rpc::{
     define_dispatch,
     header::VarHeader,
     server::{
         impls::embassy_usb_v0_4::{
-            dispatch_impl::{WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl},
-            PacketBuffers, EUsbWireTx,
+            dispatch_impl::{WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl, spawn_fn},
+            EUsbWireTx, PacketBuffers, 
         },
-        Dispatch, Sender, Server, WireTx
+        Dispatch, Sender, Server, WireTx, 
     },
 };
 
-use usb_device_handler::UsbDeviceHandler;
 use usb_device_handler::usb_task;
+use usb_device_handler::UsbDeviceHandler;
 
 use {defmt_rtt as _, panic_probe as _};
 
-use mdb_async::Mdb;
 use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
+use mdb_async::Mdb;
 
 type AppDriver = usb::Driver<'static, USB>;
 type BufStorage = PacketBuffers<1024, 1024>;
@@ -69,20 +76,13 @@ type AppTx = WireTxImpl<ThreadModeRawMutex, AppDriver>;
 type AppRx = WireRxImpl<AppDriver>;
 type AppServer = Server<AppTx, AppRx, WireRxBuf, MyApp>;
 
-static MOTOR_DRIVER: Mutex<
-    CriticalSectionRawMutex,
-    Option<MotorDriver>,
-> = Mutex::new(None);
-
 static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
 });
 
-pub struct Context {
-    //Probably not useful
-}
+use motor_driver::Context;
 
 use core::assert;
 use core::unreachable;
@@ -98,12 +98,8 @@ define_dispatch! {
 
         | EndpointTy                | kind        | handler                     |
         | ----------                | ----        | -------                     |
-        | Dispense                  | async       | dispense_handler            |
-        | ForceDispense             | async       | force_dispense_handler      |
-        | GetDispenserInfo          | async       | get_dispenser_info_handler  |
-
-        | SetCoinAcceptorEnabled    | async       | set_coin_acceptor_enabled_handler   |
-
+        | DispenseEndpoint   | spawn       | motor_driver_task           |
+      
     };
     topics_in: {
         list: TOPICS_IN_LIST;
@@ -115,38 +111,39 @@ define_dispatch! {
     };
 }
 
-async fn dispense_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenseResult {
-    let mut c = MOTOR_DRIVER.lock().await;
-    c.as_mut().expect("Motor controller missing from mutex").dispense(address).await
+assign_resources! {
+    motor_driver_pins: MotorDriverResources {
+        p0: PIN_0,
+        p1: PIN_1,
+        p2: PIN_2,
+        p3: PIN_3,
+        p4: PIN_4,
+        p5: PIN_5,
+        p6: PIN_6,
+        p7: PIN_7,
+        clk0: PIN_8,
+        clk1: PIN_9,
+        clk2: PIN_10,
+        oe: PIN_11,
+        clr: PIN_12,
+    },
 }
 
-async fn force_dispense_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenseResult {
-    let mut c = MOTOR_DRIVER.lock().await;
-    c.as_mut().expect("Motor controller missing from mutex").force_dispense(address).await
-}
+async fn set_coin_acceptor_enabled_handler(
+    _context: &mut Context,
+    _header: VarHeader,
+    enable: bool,
+) {
+    //Send a message to coin acceptor task.
+    let channel: Channel<CriticalSectionRawMutex, CoinAcceptorResponse, 1> = Channel::new();
 
-async fn get_dispenser_info_handler(_context: &mut Context, _header: VarHeader, address: DispenserAddress) -> DispenserOption {
-    let mut c = MOTOR_DRIVER.lock().await;
-    c.as_mut().expect("Motor controller missing from mutex").getDispenser(address).await
-}
-
-async fn set_coin_acceptor_enabled_handler (_context: &mut Context, _header: VarHeader, enable: bool) {
-    let mut b = MDB_DRIVER.lock().await;
-    let mdb = b.as_mut().expect("MDB driver not present");  
-    match mdb.coin_acceptor.take() {
-        Some(mut coin_acceptor) => {
-            if enable {
-                let _  = coin_acceptor.enable_coins(mdb, 0xFFFF).await;
-            }
-            else {
-                let _  = coin_acceptor.enable_coins(mdb, 0x0000).await;
-            }
-            mdb.coin_acceptor = Some(coin_acceptor);
-        },
-        None => {
-            error!("Coin acceptor enable function called, but no coin acceptor present")
-        },
-    }
+    COIN_ACCEPTOR_CHANNEL
+        .send(ChannelMessage {
+            message: mdb_driver::CoinAcceptorMessage::SetEnabled(enable),
+            reply_channel: channel,
+        })
+        .await;
+    //Don't try to read back the channel...
 }
 
 #[embassy_executor::main]
@@ -154,7 +151,7 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
     // Create the driver from the HAL.
     let driver = UsbDriver::new(p.USB, Irqs);
-    static CONFIG : StaticCell<embassy_usb::Config> = StaticCell::new();
+    static CONFIG: StaticCell<embassy_usb::Config> = StaticCell::new();
     // Create embassy-usb Config
     let config = CONFIG.init(UsbConfig::new(0xDEAD, 0xBEEF));
     config.manufacturer = Some("Snackbot");
@@ -176,7 +173,18 @@ async fn main(spawner: Spawner) {
     let device_handler = DEVICE_HANDLER.init(UsbDeviceHandler::new());
     builder.handler(device_handler);
 
-    let context = Context {};
+
+    let r = split_resources!(p);
+
+    static DISPENSER_DRIVER : Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
+      {
+        let mut m = DISPENSER_DRIVER.lock().await;
+        *m = Some(MotorDriver::new(r.motor_driver_pins).await);
+    }
+    
+    let context = Context { 
+        motor_driver:  &DISPENSER_DRIVER
+    };
 
     let dispatcher = MyApp::new(context, spawner.into());
     let vkk = dispatcher.min_key_len();
@@ -188,52 +196,30 @@ async fn main(spawner: Spawner) {
         dispatcher,
         vkk,
     );
-
-    let interface = MotorDriver::new(
-        //bus pins
-        p.PIN_0.degrade(),
-        p.PIN_1.degrade(),
-        p.PIN_2.degrade(),
-        p.PIN_3.degrade(),
-        p.PIN_4.degrade(),
-        p.PIN_5.degrade(),
-        p.PIN_6.degrade(),
-        p.PIN_7.degrade(),
-        //clk pins
-        p.PIN_8.degrade(),
-        p.PIN_9.degrade(),
-        p.PIN_10.degrade(),
-        //oe pin
-        p.PIN_11.degrade(),
-        //clr pin
-        p.PIN_12.degrade(),
-    ).await;
-    
-    {
-        //Move interface into the mutex
-        let mut m = MOTOR_DRIVER.lock().await;
-        *m = Some(interface);
-    }
     // Build the builder - USB device will be run by usb_task
     let usb = builder.build();
-    //USB device handler task
     spawner.must_spawn(usb_task(usb));
 
-    //Set up and spawn the coin acceptor task
+    //Set up the multi-drop bus peripheral (and its' PIO backed 9 bit uart) and place into MutexGuard
     {
         //Set up the 9-bit PIO backed UART the MDB library requires
-        let uart:PioUart<'_, 0> = PioUart::new(p.PIN_21, p.PIN_20, p.PIO0,Duration::from_millis(25), Duration::from_millis(3));
-        let mut mdb = Mdb::new(uart);
-        mdb.init_peripherals().await;
+        let uart: PioUart<'_, 0> = PioUart::new(
+            p.PIN_21,
+            p.PIN_20,
+            p.PIO0,
+            Duration::from_millis(25),
+            Duration::from_millis(3),
+        );
+        let mdb = Mdb::new(uart);
         let mut m = MDB_DRIVER.lock().await;
         *m = Some(mdb);
     }
 
-    spawner.must_spawn(coinacceptor_poll_task(server.sender().clone()));
-    //Postcard server mainloop just runs here
+    //Spawn the coin acceptor task
+    spawner.must_spawn(coinacceptor_task(server.sender().clone()));
+
+    //Postcard server mainloop runs here
     loop {
         let _ = server.run().await;
     }
 }
-
-

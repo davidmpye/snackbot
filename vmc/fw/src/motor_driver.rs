@@ -1,14 +1,106 @@
+
 use defmt::*;
 
 use embassy_time::{Duration, Timer, WithTimeout};
 
-use embassy_rp::gpio::{AnyPin, Level, OutputOpenDrain};
+use embassy_rp::gpio::{Level, OutputOpenDrain};
 
 use vmc_icd::dispenser::{
-    CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption, DispenserType,
-    MotorStatus, 
+     CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserCommand, DispenserOption, DispenserType, MotorStatus 
 };
+
+use vmc_icd::DispenseEndpoint;
+
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::mutex::Mutex;
+
+use postcard_rpc::{
+    define_dispatch,
+    header::VarHeader,
+    server::{
+        impls::embassy_usb_v0_4::{
+            dispatch_impl::{WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl},
+            EUsbWireTx, PacketBuffers,
+        },
+        Dispatch, Sender, Server, WireTx,    SpawnContext
+
+    },
+};
+
+
+pub struct Context {
+    pub motor_driver: &'static Mutex<ThreadModeRawMutex, Option<MotorDriver<'static>>>
+}
+pub struct SpawnCtx {
+    pub motor_driver: &'static Mutex<ThreadModeRawMutex, Option<MotorDriver<'static>>>
+}
+
+use crate::{MotorDriverResources, AppTx};
+
+impl SpawnContext for Context {
+    type SpawnCtxt = SpawnCtx;
+    fn spawn_ctxt(&mut self) -> Self::SpawnCtxt {
+        SpawnCtx { motor_driver: &self.motor_driver }
+    }
+}
+
+#[embassy_executor::task]
+pub async fn motor_driver_task(
+    context: SpawnCtx,
+    header: VarHeader,
+    rqst: DispenserCommand,
+    sender: Sender<AppTx>,
+) {
+    let mut r= context.motor_driver.lock().await;
+    let driver = r.as_mut().expect("Motor driver must be stored in mutex");
     
+    match rqst {
+        DispenserCommand::Vend(addr) => {
+            info!("Attempted vend");
+            let result = driver.dispense(addr).await;
+        },
+        DispenserCommand::ForceVend(addr) => {
+            info!("Attempted forcevend");
+            let result = driver.force_dispense(addr).await;            
+        },
+    }
+
+    //Fixme - send result back
+    if sender
+    .reply::<DispenseEndpoint>(header.seq_no, &())
+    .await
+    .is_err()
+    {   
+
+    }
+
+
+}
+
+
+/* 
+pub async fn motor_driver_task(mut driver: MotorDriver<'static>) -> !{
+    loop {
+        //The motor driver waits for messages from the command channel
+        let response = MOTOR_DRIVER_CHANNEL.receive().await;
+
+        match response.msg {
+            MotorDriverCommand::DispenseItem(addr) => {
+                let res = driver.dispense(addr).await;
+                response.reply_channel.send(res).await;
+            },
+            MotorDriverCommand::ForceDispenseItem(addr) => {
+                let res = driver.force_dispense(addr).await;
+                //response.reply_channel.send(res).await;
+            }
+            _ => {
+                error!("Unhandled message");
+            }
+        }
+
+    }
+} 
+    */
 pub struct MotorDriver<'a> {
     bus: [OutputOpenDrain<'a>; 8],
     clks: [OutputOpenDrain<'a>; 3],
@@ -18,41 +110,25 @@ pub struct MotorDriver<'a> {
 }
 
 impl<'a> MotorDriver<'a> {
-    pub(crate) async fn new(
-        bus_pin0: AnyPin,
-        bus_pin1: AnyPin,
-        bus_pin2: AnyPin,
-        bus_pin3: AnyPin,
-        bus_pin4: AnyPin,
-        bus_pin5: AnyPin,
-        bus_pin6: AnyPin,
-        bus_pin7: AnyPin,
-
-        clk_pin1: AnyPin,
-        clk_pin2: AnyPin,
-        clk_pin3: AnyPin,
-
-        oe_pin: AnyPin,
-        flipflop_clr_pin: AnyPin,
-    ) -> Self {
+    pub(crate) async fn new(pins: MotorDriverResources) -> Self {
         let mut x = Self {
             bus: [
-                OutputOpenDrain::new(bus_pin0, Level::High),
-                OutputOpenDrain::new(bus_pin1, Level::High),
-                OutputOpenDrain::new(bus_pin2, Level::High),
-                OutputOpenDrain::new(bus_pin3, Level::High),
-                OutputOpenDrain::new(bus_pin4, Level::High),
-                OutputOpenDrain::new(bus_pin5, Level::High),
-                OutputOpenDrain::new(bus_pin6, Level::High),
-                OutputOpenDrain::new(bus_pin7, Level::High),
+                OutputOpenDrain::new(pins.p0, Level::High),
+                OutputOpenDrain::new(pins.p1, Level::High),
+                OutputOpenDrain::new(pins.p2, Level::High),
+                OutputOpenDrain::new(pins.p3, Level::High),
+                OutputOpenDrain::new(pins.p4, Level::High),
+                OutputOpenDrain::new(pins.p5, Level::High),
+                OutputOpenDrain::new(pins.p6, Level::High),
+                OutputOpenDrain::new(pins.p7, Level::High),
             ],
             clks: [
-                OutputOpenDrain::new(clk_pin1, Level::High),
-                OutputOpenDrain::new(clk_pin2, Level::High),
-                OutputOpenDrain::new(clk_pin3, Level::High),
+                OutputOpenDrain::new(pins.clk0, Level::High),
+                OutputOpenDrain::new(pins.clk1, Level::High),
+                OutputOpenDrain::new(pins.clk2, Level::High),
             ],
-            output_enable: OutputOpenDrain::new(oe_pin, Level::High),
-            flipflop_clr: OutputOpenDrain::new(flipflop_clr_pin, Level::High),
+            output_enable: OutputOpenDrain::new(pins.oe, Level::High),
+            flipflop_clr: OutputOpenDrain::new(pins.clr, Level::High),
 
             valid_addresses: [
                 DispenserAddress { row: 'A', col: '0' },
