@@ -4,16 +4,12 @@
 mod mdb_driver;
 mod motor_driver;
 mod usb_device_handler;
-use embassy_sync::channel::Channel;
-use mdb_driver::coinacceptor_task;
-use mdb_driver::COIN_ACCEPTOR_CHANNEL;
-use mdb_driver::{ChannelMessage, CoinAcceptorResponse};
 
+
+use mdb_driver::coinacceptor_task;
 use motor_driver::{motor_driver_task};
 
 use embassy_sync::mutex::Mutex;
-
-use defmt::*;
 
 use embassy_executor::Spawner;
 
@@ -23,39 +19,30 @@ use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use assign_resources::assign_resources;
 use embassy_usb::Config as UsbConfig;
 
-use embassy_rp::gpio::Pin;
-use embassy_rp::peripherals::{PIO0, USB};
-use embassy_rp::pio;
+use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
 use embassy_rp::{bind_interrupts, peripherals};
 
-use embassy_time::{Duration, Timer};
+use embassy_time::Duration;
 use static_cell::{ConstStaticCell, StaticCell};
 
-use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
 use vmc_icd::{DispenseEndpoint,
     CoinInsertedTopic, EventTopic,
-    SetCoinAcceptorEnabled, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
 };
 
-use vmc_icd::dispenser::{
-    CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserOption,
-    DispenserType, MotorStatus,
-};
 
 use crate::motor_driver::MotorDriver;
-use embedded_io_async::{Read, Write};
 use pio_9bit_uart_async::PioUart;
 use postcard_rpc::{
     define_dispatch,
-    header::VarHeader,
     server::{
         impls::embassy_usb_v0_4::{
             dispatch_impl::{WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl, spawn_fn},
             EUsbWireTx, PacketBuffers, 
         },
-        Dispatch, Sender, Server, WireTx, 
+        Dispatch, Sender, Server,  SpawnContext
     },
 };
 
@@ -76,13 +63,23 @@ type AppTx = WireTxImpl<ThreadModeRawMutex, AppDriver>;
 type AppRx = WireRxImpl<AppDriver>;
 type AppServer = Server<AppTx, AppRx, WireRxBuf, MyApp>;
 
-static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
 });
 
-use motor_driver::Context;
+pub struct Context {
+}
+
+pub struct SpawnCtx {
+}
+
+impl SpawnContext for Context {
+    type SpawnCtxt = SpawnCtx;
+    fn spawn_ctxt(&mut self) -> Self::SpawnCtxt {
+        SpawnCtx {  }
+    }
+}
 
 use core::assert;
 use core::unreachable;
@@ -98,7 +95,8 @@ define_dispatch! {
 
         | EndpointTy                | kind        | handler                     |
         | ----------                | ----        | -------                     |
-        | DispenseEndpoint   | spawn       | motor_driver_task           |
+        | DispenseEndpoint          | spawn       | motor_driver_task           |
+
       
     };
     topics_in: {
@@ -129,22 +127,10 @@ assign_resources! {
     },
 }
 
-async fn set_coin_acceptor_enabled_handler(
-    _context: &mut Context,
-    _header: VarHeader,
-    enable: bool,
-) {
-    //Send a message to coin acceptor task.
-    let channel: Channel<CriticalSectionRawMutex, CoinAcceptorResponse, 1> = Channel::new();
+static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);
 
-    COIN_ACCEPTOR_CHANNEL
-        .send(ChannelMessage {
-            message: mdb_driver::CoinAcceptorMessage::SetEnabled(enable),
-            reply_channel: channel,
-        })
-        .await;
-    //Don't try to read back the channel...
-}
+static MOTOR_DRIVER:Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
+
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -173,18 +159,16 @@ async fn main(spawner: Spawner) {
     let device_handler = DEVICE_HANDLER.init(UsbDeviceHandler::new());
     builder.handler(device_handler);
 
+    let context = Context {};
 
-    let r = split_resources!(p);
+    let resources = split_resources!(p);
 
     static DISPENSER_DRIVER : Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
       {
         let mut m = DISPENSER_DRIVER.lock().await;
-        *m = Some(MotorDriver::new(r.motor_driver_pins).await);
+        *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
     }
     
-    let context = Context { 
-        motor_driver:  &DISPENSER_DRIVER
-    };
 
     let dispatcher = MyApp::new(context, spawner.into());
     let vkk = dispatcher.min_key_len();
@@ -214,6 +198,7 @@ async fn main(spawner: Spawner) {
         let mut m = MDB_DRIVER.lock().await;
         *m = Some(mdb);
     }
+
 
     //Spawn the coin acceptor task
     spawner.must_spawn(coinacceptor_task(server.sender().clone()));

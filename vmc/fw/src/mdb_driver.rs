@@ -1,24 +1,21 @@
 use defmt::*;
 
-use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
+use embassy_rp::usb::{Driver as UsbDriver};
 use embassy_time::{Duration, Timer};
 
 use postcard_rpc::{
-    define_dispatch,
-    header::VarHeader,
     server::{
         impls::embassy_usb_v0_4::{
-            dispatch_impl::{WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl},
-            EUsbWireTx, PacketBuffers,
-        },
-        Dispatch, Sender, Server, WireTx,
+            dispatch_impl::WireTxImpl,
+        EUsbWireTx},
+        Sender, WireTx,
+
     },
 };
 use crate::AppDriver;
 type AppTx = WireTxImpl<ThreadModeRawMutex, AppDriver>;
 
-
-use embassy_rp::peripherals::{USB, PIO0};
+use embassy_rp::peripherals::USB;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -28,8 +25,7 @@ use mdb_async::{coin_acceptor, Mdb};
 use vmc_icd::EventTopic;
 
 use vmc_icd::{
-    CoinInsertedTopic, SetCoinAcceptorEnabled,
-    ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+    CoinInsertedTopic,
 };
 
 use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};

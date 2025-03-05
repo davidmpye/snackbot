@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 use defmt::*;
-use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
+use embassy_rp::usb::Driver as UsbDriver;
 use embassy_usb::{Handler, UsbDevice};
 use embassy_rp::peripherals::{USB};
 type MyUsbDriver = UsbDriver<'static, USB>;

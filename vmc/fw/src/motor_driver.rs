@@ -1,48 +1,18 @@
-
 use defmt::*;
 
 use embassy_time::{Duration, Timer, WithTimeout};
-
 use embassy_rp::gpio::{Level, OutputOpenDrain};
 
 use vmc_icd::dispenser::{
      CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenserCommand, DispenserOption, DispenserType, MotorStatus 
 };
-
 use vmc_icd::DispenseEndpoint;
 
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::mutex::Mutex;
-
 use postcard_rpc::{
-    define_dispatch,
     header::VarHeader,
-    server::{
-        impls::embassy_usb_v0_4::{
-            dispatch_impl::{WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl},
-            EUsbWireTx, PacketBuffers,
-        },
-        Dispatch, Sender, Server, WireTx,    SpawnContext
-
-    },
 };
 
-
-pub struct Context {
-    pub motor_driver: &'static Mutex<ThreadModeRawMutex, Option<MotorDriver<'static>>>
-}
-pub struct SpawnCtx {
-    pub motor_driver: &'static Mutex<ThreadModeRawMutex, Option<MotorDriver<'static>>>
-}
-
-use crate::{MotorDriverResources, AppTx};
-
-impl SpawnContext for Context {
-    type SpawnCtxt = SpawnCtx;
-    fn spawn_ctxt(&mut self) -> Self::SpawnCtxt {
-        SpawnCtx { motor_driver: &self.motor_driver }
-    }
-}
+use crate::{MOTOR_DRIVER, MotorDriverResources, AppTx, Context, SpawnCtx, Sender};
 
 #[embassy_executor::task]
 pub async fn motor_driver_task(
@@ -51,7 +21,7 @@ pub async fn motor_driver_task(
     rqst: DispenserCommand,
     sender: Sender<AppTx>,
 ) {
-    let mut r= context.motor_driver.lock().await;
+    let mut r = MOTOR_DRIVER.lock().await;
     let driver = r.as_mut().expect("Motor driver must be stored in mutex");
     
     match rqst {
@@ -77,30 +47,6 @@ pub async fn motor_driver_task(
 
 }
 
-
-/* 
-pub async fn motor_driver_task(mut driver: MotorDriver<'static>) -> !{
-    loop {
-        //The motor driver waits for messages from the command channel
-        let response = MOTOR_DRIVER_CHANNEL.receive().await;
-
-        match response.msg {
-            MotorDriverCommand::DispenseItem(addr) => {
-                let res = driver.dispense(addr).await;
-                response.reply_channel.send(res).await;
-            },
-            MotorDriverCommand::ForceDispenseItem(addr) => {
-                let res = driver.force_dispense(addr).await;
-                //response.reply_channel.send(res).await;
-            }
-            _ => {
-                error!("Unhandled message");
-            }
-        }
-
-    }
-} 
-    */
 pub struct MotorDriver<'a> {
     bus: [OutputOpenDrain<'a>; 8],
     clks: [OutputOpenDrain<'a>; 3],
@@ -109,7 +55,7 @@ pub struct MotorDriver<'a> {
     valid_addresses: [DispenserAddress;24],
 }
 
-impl<'a> MotorDriver<'a> {
+impl <'a> MotorDriver <'a> {
     pub(crate) async fn new(pins: MotorDriverResources) -> Self {
         let mut x = Self {
             bus: [
@@ -173,12 +119,7 @@ impl<'a> MotorDriver<'a> {
     }
 
     fn is_address_valid(&mut self, addr: DispenserAddress) -> bool {
-        if self.valid_addresses.contains(&addr) {
-            true
-        }
-        else {
-            false
-        }
+        self.valid_addresses.contains(&addr) 
     }
 
     async fn stop_motors(&mut self) {
@@ -437,7 +378,7 @@ impl<'a> MotorDriver<'a> {
             Ok(())
         } else {
             error!("Motor did not return home in time (3 sec)");
-            return Err(DispenseError::MotorStuckNotHome);
+            Err(DispenseError::MotorStuckNotHome)
         }
     }
 }

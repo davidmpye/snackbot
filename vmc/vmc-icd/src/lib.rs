@@ -1,7 +1,5 @@
 #![cfg_attr(not(feature = "use-std"), no_std)]
 use postcard_rpc::{endpoints, topics, TopicDirection};
-use postcard_schema::Schema;
-use serde::{Deserialize, Serialize};
 
 pub mod dispenser;
 use crate::dispenser::*;
@@ -16,9 +14,6 @@ endpoints! {
     | ----------              | ---------        | ----------           | ----              |
     | DispenseEndpoint        | DispenserCommand | ()                   | "dispenser"       |
 
-    //Coin acceptor endpoints
-    | SetCoinAcceptorEnabled  | bool             | ()                   | "setcoinacceptorenabled"  |
-    | DispenseCoins           | u16              | u16                  | "dispensecoins"           | //Returns amount ACTUALLY refunded
 
 }
 
