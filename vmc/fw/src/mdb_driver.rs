@@ -1,18 +1,13 @@
 use defmt::*;
 
-use embassy_rp::usb::{Driver as UsbDriver};
+use embassy_rp::usb::Driver as UsbDriver;
 use embassy_time::{Duration, Timer};
 
-use postcard_rpc::{
-    server::{
-        impls::embassy_usb_v0_4::{
-            dispatch_impl::WireTxImpl,
-        EUsbWireTx},
-        Sender, WireTx,
-
-    },
-};
 use crate::AppDriver;
+use postcard_rpc::server::{
+    impls::embassy_usb_v0_4::{dispatch_impl::WireTxImpl, EUsbWireTx},
+    Sender, WireTx,
+};
 type AppTx = WireTxImpl<ThreadModeRawMutex, AppDriver>;
 
 use embassy_rp::peripherals::USB;
@@ -24,9 +19,7 @@ use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
 use mdb_async::{coin_acceptor, Mdb};
 use vmc_icd::EventTopic;
 
-use vmc_icd::{
-    CoinInsertedTopic,
-};
+use vmc_icd::CoinInsertedTopic;
 
 use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
 
@@ -47,10 +40,13 @@ pub enum CoinAcceptorResponse {
     CoinsDispensed(u16),
 }
 
-pub static COIN_ACCEPTOR_CHANNEL: Channel<CriticalSectionRawMutex, ChannelMessage, 1> = Channel::new();
+pub static COIN_ACCEPTOR_CHANNEL: Channel<CriticalSectionRawMutex, ChannelMessage, 1> =
+    Channel::new();
 
 #[embassy_executor::task]
-pub async fn coinacceptor_poll_task(postcard_sender:  Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>) {
+pub async fn coinacceptor_poll_task(
+    postcard_sender: Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>,
+) {
     loop {
         match coin_acceptor_init().await {
             Some(mut acceptor) => {
@@ -71,12 +67,12 @@ pub async fn coinacceptor_poll_task(postcard_sender:  Sender<EUsbWireTx<ThreadMo
                     let response = {
                         //Unlock MDB
                         let mut b = MDB_DRIVER.lock().await;
-                        let bus = b.as_mut().expect("MDB driver not present");    
+                        let bus = b.as_mut().expect("MDB driver not present");
                         acceptor.poll(bus).await
                     };
                     //Process the poll events
                     coinacceptor_process_poll_events(response, &postcard_sender).await;
-                    
+
                     //If we have any messages from the channel, handle them
                     match COIN_ACCEPTOR_CHANNEL.try_receive() {
                         Ok(msg) => {
@@ -85,32 +81,33 @@ pub async fn coinacceptor_poll_task(postcard_sender:  Sender<EUsbWireTx<ThreadMo
                                     let mask = {
                                         if enable {
                                             0xFFFFu16
-                                        }
-                                        else {
+                                        } else {
                                             0x0000u16
                                         }
                                     };
                                     {
                                         let mut b = MDB_DRIVER.lock().await;
-                                        let bus = b.as_mut().expect("MDB driver not present");   
+                                        let bus = b.as_mut().expect("MDB driver not present");
                                         match acceptor.enable_coins(bus, mask).await {
                                             Ok(_e) => {
-                                                msg.reply_channel.send(CoinAcceptorResponse::Ok).await;
-                                            },
+                                                msg.reply_channel
+                                                    .send(CoinAcceptorResponse::Ok)
+                                                    .await;
+                                            }
                                             Err(_e) => {
-                                                msg.reply_channel.send(CoinAcceptorResponse::Err).await;
-                                            },
+                                                msg.reply_channel
+                                                    .send(CoinAcceptorResponse::Err)
+                                                    .await;
+                                            }
                                         }
                                     }
-                                },
+                                }
                                 CoinAcceptorMessage::DispenseCoins(amount) => {
                                     //No can do yet.
-
-                                },
-
+                                }
                             }
-                        },
-                        Err(x) => {},
+                        }
+                        Err(x) => {}
                     }
                     //Wait 50mS.
                     Timer::after_millis(50).await;
@@ -125,14 +122,17 @@ pub async fn coinacceptor_poll_task(postcard_sender:  Sender<EUsbWireTx<ThreadMo
 }
 
 pub async fn coin_acceptor_init() -> Option<CoinAcceptor> {
-    //Unlock MDB                 
+    //Unlock MDB
     let mut b = MDB_DRIVER.lock().await;
-    let bus = b.as_mut().expect("MDB driver not present"); 
+    let bus = b.as_mut().expect("MDB driver not present");
     //Try to initialise the coin acceptor
     CoinAcceptor::init(bus).await
 }
 
-pub async fn coinacceptor_process_poll_events(events: [Option<PollEvent>;16], postcard_sender:  &Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>)  {
+pub async fn coinacceptor_process_poll_events(
+    events: [Option<PollEvent>; 16],
+    postcard_sender: &Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>,
+) {
     let mut seq = 0x0000u16;
     for e in events.iter() {
         match e {
@@ -140,23 +140,26 @@ pub async fn coinacceptor_process_poll_events(events: [Option<PollEvent>;16], po
                 match event {
                     PollEvent::Status(bytes) => {
                         info!("Let's pretend it was always escrow....");
-                        let _ = postcard_sender.publish::<EventTopic>(seq.into(), &CoinAcceptorEvent::EscrowPressed).await;   
-                        seq = seq + 1;         
+                        let _ = postcard_sender
+                            .publish::<EventTopic>(seq.into(), &CoinAcceptorEvent::EscrowPressed)
+                            .await;
+                        seq = seq + 1;
                     }
                     PollEvent::Coin(x) => {
-                        info!("Coin inserted - unscaled value: {}", x.unscaled_value);     
+                        info!("Coin inserted - unscaled value: {}", x.unscaled_value);
                         let coinevent = CoinInserted {
                             value: x.unscaled_value,
-                            routing: CoinRouting::CashBox //fixme!
+                            routing: CoinRouting::CashBox, //fixme!
                         };
-                        let _ = postcard_sender.publish::<CoinInsertedTopic>(seq.into(), &coinevent).await;
-                        seq = seq + 1;         
+                        let _ = postcard_sender
+                            .publish::<CoinInsertedTopic>(seq.into(), &coinevent)
+                            .await;
+                        seq = seq + 1;
                     }
-                    _=> {},
+                    _ => {}
                 }
-            },
-            _ =>{},
+            }
+            _ => {}
         }
     }
 }
-   

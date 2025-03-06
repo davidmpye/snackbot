@@ -93,6 +93,7 @@ define_dispatch! {
         | ----------                | ----        | -------                     |
         | DispenseEndpoint          | spawn       | motor_driver_dispense_task  |
     };
+    
     topics_in: {
         list: TOPICS_IN_LIST;
         | TopicTy                   | kind      | handler                       |
