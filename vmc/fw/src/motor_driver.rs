@@ -11,7 +11,7 @@ use vmc_icd::DispenseEndpoint;
 
 use postcard_rpc::header::VarHeader;
 
-use crate::{AppTx, MotorDriverResources, Sender, SpawnCtx, MOTOR_DRIVER};
+use crate::{AppTx, MotorDriverResources, Sender, SpawnCtx, Context, MOTOR_DRIVER};
 
 #[embassy_executor::task]
 pub async fn motor_driver_dispense_task(
@@ -33,6 +33,16 @@ pub async fn motor_driver_dispense_task(
         }
     };
     let _ = sender.reply::<DispenseEndpoint>(header.seq_no, &result).await;
+}
+
+
+pub async fn motor_driver_dispenser_info(    
+    context: &mut Context,
+    _header: VarHeader,
+    addr: DispenserAddress) -> Option<Dispenser> {
+    let mut r = MOTOR_DRIVER.lock().await;
+    let driver = r.as_mut().expect("Motor driver must be stored in mutex");
+    driver.get_dispenser(addr).await
 }
 
 pub struct MotorDriver<'a> {

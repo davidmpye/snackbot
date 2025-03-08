@@ -6,7 +6,7 @@ mod motor_driver;
 mod usb_device_handler;
 
 use mdb_driver::coinacceptor_poll_task;
-use motor_driver::motor_driver_dispense_task;
+use motor_driver::{motor_driver_dispense_task, motor_driver_dispenser_info};
 
 use embassy_sync::mutex::Mutex;
 
@@ -27,7 +27,7 @@ use embassy_time::Duration;
 use static_cell::{ConstStaticCell, StaticCell};
 
 use vmc_icd::{
-    CoinInsertedTopic, DispenseEndpoint, EventTopic, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+    CoinInsertedTopic, DispenseEndpoint, DispenserInfoEndpoint, EventTopic, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
 };
 
 use crate::motor_driver::MotorDriver;
@@ -67,7 +67,6 @@ bind_interrupts!(struct Irqs {
 });
 
 pub struct Context {}
-
 pub struct SpawnCtx {}
 
 impl SpawnContext for Context {
@@ -91,16 +90,19 @@ define_dispatch! {
 
         | EndpointTy                | kind        | handler                     |
         | ----------                | ----        | -------                     |
-        | DispenseEndpoint          | spawn       | motor_driver_dispense_task  |
+        | DispenseEndpoint          | spawn       | motor_driver_dispense_task  | //spawn due to duration of action
+        | DispenserInfoEndpoint     | async       | motor_driver_dispenser_info |
     };
     
-    topics_in: {
+    topics_in: {    
         list: TOPICS_IN_LIST;
         | TopicTy                   | kind      | handler                       |
         | ----------                | ----      | -------                       |
     };
     topics_out: {
         list: TOPICS_OUT_LIST;
+
+        
     };
 }
 
@@ -154,28 +156,15 @@ async fn main(spawner: Spawner) {
     builder.handler(device_handler);
 
     let context = Context {};
-
+  
     let resources = split_resources!(p);
 
+    //Set up the dispenser driver struct - the task that uses it is spawned by postcard-rpc
     static DISPENSER_DRIVER: Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
     {
         let mut m = DISPENSER_DRIVER.lock().await;
         *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
     }
-
-    let dispatcher = MyApp::new(context, spawner.into());
-    let vkk = dispatcher.min_key_len();
-
-    let mut server: AppServer = Server::new(
-        tx_impl,
-        rx_impl,
-        pbufs.rx_buf.as_mut_slice(),
-        dispatcher,
-        vkk,
-    );
-    // Build the builder - USB device will be run by usb_task
-    let usb = builder.build();
-    spawner.must_spawn(usb_task(usb));
 
     //Set up the multi-drop bus peripheral (and its' PIO backed 9 bit uart) and place into MutexGuard
     {
@@ -192,9 +181,23 @@ async fn main(spawner: Spawner) {
         *m = Some(mdb);
     }
 
-    //Spawn the coin acceptor task
-    spawner.must_spawn(coinacceptor_poll_task(server.sender().clone()));
+    //Set up the Postcard RPC server
+    let dispatcher = MyApp::new(context, spawner.into());
+    let vkk = dispatcher.min_key_len();
+    let mut server: AppServer = Server::new(
+        tx_impl,
+        rx_impl,
+        pbufs.rx_buf.as_mut_slice(),
+        dispatcher,
+        vkk,
+    );
+    // Build the builder - USB device will be run by usb_task
+    let usb = builder.build();
+    spawner.must_spawn(usb_task(usb));
 
+    //Spawn the coin acceptor poll task
+    spawner.must_spawn(coinacceptor_poll_task(server.sender().clone()));
+    
     //Postcard server mainloop runs here
     loop {
         let _ = server.run().await;
