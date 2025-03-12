@@ -101,16 +101,14 @@ impl<'a> MotorDriver<'a> {
                 DispenserAddress { row: 'F', col: '2' },
                 DispenserAddress { row: 'F', col: '3' },
             ],
-            //TEST
-            chiller_on: true,
+            chiller_on: false,
         };
 
-        //Pull flipflop_clr high after 50uS to allow flipflops to be written
+        //Clear the flipflops using flipflop_clr
         Timer::after_micros(50).await;
         x.flipflop_clr.set_low();
         Timer::after_micros(50).await;
         x.flipflop_clr.set_high();
-        x.stop_motors().await;
 
         x
     }

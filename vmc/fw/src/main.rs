@@ -1,15 +1,19 @@
 #![no_std]
 #![no_main]
 
+use defmt::*;
+
 
 use assign_resources::assign_resources;
 
 mod mdb_driver;
 mod motor_driver;
 mod usb_device_handler;
+mod chiller_driver;
 
 use mdb_driver::coinacceptor_poll_task;
 use motor_driver::{motor_driver_dispense_task, motor_driver_dispenser_status};
+use chiller_driver::chiller_task;
 
 use embassy_sync::mutex::Mutex;
 
@@ -23,9 +27,14 @@ use embassy_usb::Config as UsbConfig;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
-use embassy_rp::{bind_interrupts, peripherals};
+use embassy_rp::{adc, bind_interrupts, peripherals};
+use embassy_rp::adc::{Adc, Async, Config, InterruptHandler};
+
+
+use embassy_rp::gpio::Pull;
 
 use embassy_time::Duration;
+
 use static_cell::{ConstStaticCell, StaticCell};
 
 use vmc_icd::{
@@ -66,6 +75,7 @@ type AppServer = Server<AppTx, AppRx, WireRxBuf, MyApp>;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
+    ADC_IRQ_FIFO => InterruptHandler;
 });
 
 pub struct Context {}
@@ -89,7 +99,6 @@ define_dispatch! {
 
     endpoints: {
         list: ENDPOINT_LIST;
-
         | EndpointTy                | kind        | handler                       |
         | ----------                | ----        | -------                       |
         | DispenseEndpoint          | spawn       | motor_driver_dispense_task    | //spawn due to duration of action
@@ -151,13 +160,19 @@ async fn main(spawner: Spawner) {
         STORAGE.init_without_build(driver, *config, pbufs.tx_buf.as_mut_slice());
 
     static DEVICE_HANDLER: StaticCell<UsbDeviceHandler> = StaticCell::new();
-
     let device_handler = DEVICE_HANDLER.init(UsbDeviceHandler::new());
     builder.handler(device_handler);
 
     let context = Context {};
   
     let resources = split_resources!(p);
+
+    //Set up the ADC for the chiller thermistor
+    info!("Setting up ADC");
+    let adc = Adc::new(p.ADC, Irqs, Config::default());
+    let p26 = adc::Channel::new_pin(p.PIN_26, Pull::None);
+    //Spawn the task to handle it
+    spawner.must_spawn(chiller_task(adc, p26));
 
     //Set up the dispenser driver struct - the task that uses it is spawned by postcard-rpc
     static DISPENSER_DRIVER: Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
