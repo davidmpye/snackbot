@@ -35,8 +35,7 @@ pub async fn motor_driver_dispense_task(
     let _ = sender.reply::<DispenseEndpoint>(header.seq_no, &result).await;
 }
 
-
-pub async fn motor_driver_dispenser_info(    
+pub async fn motor_driver_dispenser_status(    
     context: &mut Context,
     _header: VarHeader,
     addr: DispenserAddress) -> Option<Dispenser> {
@@ -51,6 +50,7 @@ pub struct MotorDriver<'a> {
     output_enable: OutputOpenDrain<'a>,
     flipflop_clr: OutputOpenDrain<'a>,
     valid_addresses: [DispenserAddress; 24],
+    chiller_on: bool,
 }
 
 impl<'a> MotorDriver<'a> {
@@ -101,6 +101,8 @@ impl<'a> MotorDriver<'a> {
                 DispenserAddress { row: 'F', col: '2' },
                 DispenserAddress { row: 'F', col: '3' },
             ],
+            //TEST
+            chiller_on: true,
         };
 
         //Pull flipflop_clr high after 50uS to allow flipflops to be written
@@ -108,6 +110,7 @@ impl<'a> MotorDriver<'a> {
         x.flipflop_clr.set_low();
         Timer::after_micros(50).await;
         x.flipflop_clr.set_high();
+        x.stop_motors().await;
 
         x
     }
@@ -128,7 +131,11 @@ impl<'a> MotorDriver<'a> {
         self.write_bytes(bytes).await;
     }
 
-    async fn write_bytes(&mut self, bytes: [u8; 3]) {
+    async fn write_bytes(&mut self, mut bytes: [u8; 3]) {
+        //Add in the chiller state
+        if self.chiller_on {
+            bytes[0] |= 0x10u8;
+        }
         debug!("Writing out bytes {}", bytes);
         for (clk_pin, byte) in core::iter::zip(self.clks.iter_mut(), bytes.iter()) {
             //write out the data
@@ -385,5 +392,11 @@ impl<'a> MotorDriver<'a> {
             error!("Motor did not return home in time (3 sec)");
             Err(DispenseError::MotorStuckNotHome)
         }
+    }
+
+    pub async fn set_chiller_on(&mut self, status: bool) {
+        self.chiller_on = status;
+        //This will cause the status to be actioned.
+        self.stop_motors().await;
     }
 }

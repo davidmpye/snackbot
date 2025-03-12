@@ -1,12 +1,15 @@
 #![no_std]
 #![no_main]
 
+
+use assign_resources::assign_resources;
+
 mod mdb_driver;
 mod motor_driver;
 mod usb_device_handler;
 
 use mdb_driver::coinacceptor_poll_task;
-use motor_driver::{motor_driver_dispense_task, motor_driver_dispenser_info};
+use motor_driver::{motor_driver_dispense_task, motor_driver_dispenser_status};
 
 use embassy_sync::mutex::Mutex;
 
@@ -15,7 +18,6 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 
-use assign_resources::assign_resources;
 use embassy_usb::Config as UsbConfig;
 
 use embassy_rp::peripherals::USB;
@@ -27,7 +29,7 @@ use embassy_time::Duration;
 use static_cell::{ConstStaticCell, StaticCell};
 
 use vmc_icd::{
-    CoinInsertedTopic, DispenseEndpoint, DispenserInfoEndpoint, EventTopic, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+    CoinInsertedTopic, DispenseEndpoint, DispenserStatusEndpoint, EventTopic, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
 };
 
 use crate::motor_driver::MotorDriver;
@@ -88,10 +90,10 @@ define_dispatch! {
     endpoints: {
         list: ENDPOINT_LIST;
 
-        | EndpointTy                | kind        | handler                     |
-        | ----------                | ----        | -------                     |
-        | DispenseEndpoint          | spawn       | motor_driver_dispense_task  | //spawn due to duration of action
-        | DispenserInfoEndpoint     | async       | motor_driver_dispenser_info |
+        | EndpointTy                | kind        | handler                       |
+        | ----------                | ----        | -------                       |
+        | DispenseEndpoint          | spawn       | motor_driver_dispense_task    | //spawn due to duration of action
+        | DispenserStatusEndpoint   | async       | motor_driver_dispenser_status |
     };
     
     topics_in: {    
@@ -101,8 +103,6 @@ define_dispatch! {
     };
     topics_out: {
         list: TOPICS_OUT_LIST;
-
-        
     };
 }
 
