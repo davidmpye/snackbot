@@ -4,7 +4,7 @@ use postcard_rpc::{
     standard_icd::{PingEndpoint, WireError, ERROR_PATH},
 };
 
-use vmc_icd::{dispenser::{ Dispenser, DispenserAddress, DispenserCommand}, SetCoinAcceptorEnabled};
+use vmc_icd::{dispenser::{ DispenseCommand, Dispenser, DispenserAddress}, DispenserStatusEndpoint, };//; SetCoinAcceptorEnabled};
 use vmc_icd::DispenseEndpoint;
 use std::convert::Infallible;
 
@@ -58,12 +58,12 @@ impl VmcDriver {
     }
 
     pub async fn dispense(&mut self, addr: DispenserAddress) -> Result<(), VmcClientError<Infallible>>{
-        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenserCommand::Vend(addr)).await?;
+        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::Vend(addr)).await?;
         Ok(())
     }
 
     pub async fn force_dispense(&mut self, addr: DispenserAddress) -> Result<(), VmcClientError<Infallible>>{
-        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenserCommand::ForceVend(addr)).await?;
+        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::ForceVend(addr)).await?;
         Ok(())
     }
 
@@ -72,7 +72,7 @@ impl VmcDriver {
         //For all possible machine addresses, see if there is a dispenser present
         for r in [ 'A', 'B', 'C', 'D', 'E', 'F','G' ] {
             for c in ['0','1','2','3','4','5','6','7','8','9'] {
-              //  let disp = self.driver.send_resp::<GetDispenserInfo>(&DispenserAddress{row:r, col:c}).await;
+                let disp = self.driver.send_resp::<DispenserStatusEndpoint>(&DispenserAddress{row:r, col:c}).await;
             }
         }
         dispensers
@@ -80,7 +80,7 @@ impl VmcDriver {
 
     //Sets whether the coin acceptor should accept coins or not
     pub async fn set_coinacceptor_enabled(&mut self, enable:bool) -> Result<(), VmcClientError<Infallible>> {
-        let _res = self.driver.send_resp::<SetCoinAcceptorEnabled>(&enable).await?;
+    //    let _res = self.driver.send_resp::<SetCoinAcceptorEnabled>(&enable).await?;
         Ok(())
     }
 
