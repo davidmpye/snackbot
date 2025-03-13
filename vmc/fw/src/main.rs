@@ -163,16 +163,16 @@ async fn main(spawner: Spawner) {
   
     let resources = split_resources!(p);
 
+    {
+        //Set up the dispenser motor driver struct - the task that uses it is spawned by postcard-rpc
+        let mut m = DISPENSER_DRIVER.lock().await;
+        *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
+    }
+
     //Set up the ADC for the chiller thermistor
     let adc = Adc::new(p.ADC, Irqs, Config::default());
     let p26 = adc::Channel::new_pin(resources.adc_pin.pin, Pull::None);
     spawner.must_spawn(chiller_task(adc, p26));
-
-    {
-        //Set up the dispenser driver struct - the task that uses it is spawned by postcard-rpc
-        let mut m = DISPENSER_DRIVER.lock().await;
-        *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
-    }
 
     //Set up the multi-drop bus peripheral (and its' PIO backed 9 bit uart) and place into MutexGuard
     {
