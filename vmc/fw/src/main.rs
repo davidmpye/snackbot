@@ -131,11 +131,15 @@ assign_resources! {
         oe: PIN_11,
         clr: PIN_12,
     },
+    adc_pin: AdcResources {
+        pin: PIN_26,
+    }
 }
 
-static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);
+static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);    
 
-static MOTOR_DRIVER: Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
+static DISPENSER_DRIVER: Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
+
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -168,15 +172,12 @@ async fn main(spawner: Spawner) {
     let resources = split_resources!(p);
 
     //Set up the ADC for the chiller thermistor
-    info!("Setting up ADC");
     let adc = Adc::new(p.ADC, Irqs, Config::default());
-    let p26 = adc::Channel::new_pin(p.PIN_26, Pull::None);
-    //Spawn the task to handle it
+    let p26 = adc::Channel::new_pin(resources.adc_pin.pin, Pull::None);
     spawner.must_spawn(chiller_task(adc, p26));
 
-    //Set up the dispenser driver struct - the task that uses it is spawned by postcard-rpc
-    static DISPENSER_DRIVER: Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
     {
+        //Set up the dispenser driver struct - the task that uses it is spawned by postcard-rpc
         let mut m = DISPENSER_DRIVER.lock().await;
         *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
     }

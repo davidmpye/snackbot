@@ -1,8 +1,11 @@
 #![no_std]
 #![no_main]
+use defmt::*;
 
 use core::sync::atomic::{AtomicBool, Ordering};
-use defmt::*;
+use fixedstr::str32;
+use core::unreachable;
+use static_cell::{ConstStaticCell, StaticCell};
 
 use embassy_executor::Spawner;
 
@@ -25,9 +28,6 @@ use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandl
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
 use lcd_lcm1602_i2c::sync_lcd::Lcd;
-use static_cell::{ConstStaticCell, StaticCell};
-
-use fixedstr::str32;
 
 //NB if we use second core, this mutex is not suitable
 static DISPLAY_TEXT: Signal<ThreadModeRawMutex, [[u8; 32];2]> = Signal::new();
@@ -77,8 +77,6 @@ pub struct Context {
     //Probably not useful
 }
 
-use core::assert;
-use core::unreachable;
 define_dispatch! {
     app: MyApp;
     spawn_fn: spawn_fn;
@@ -210,11 +208,11 @@ async fn servicemode_switch_task(service_mode_pin: AnyPin, sender: Sender<AppTx>
     loop {
         async_input.wait_for_low().await;
         //Send signal service mode enabled
-        let _ = sender.publish::<ServiceModeTopic>(msg_count.into(), &true);
+        let _ = sender.publish::<ServiceModeTopic>(msg_count.into(), &true).await;
         msg_count = msg_count.wrapping_add(1);
         async_input.wait_for_high().await;
         //Send signal service mode DISABLED
-        let _ = sender.publish::<ServiceModeTopic>(msg_count.into(), &false);
+        let _ = sender.publish::<ServiceModeTopic>(msg_count.into(), &false).await;
         msg_count = msg_count.wrapping_add(1);
     }
 }
@@ -244,7 +242,7 @@ fn set_text(_context: &mut Context, _header: VarHeader, rqst: [[u8; 32];2]) {
 }
 
 
-struct display_line {
+struct DisplayLine {
     text: str32,
     changed : bool,
     scrolling: bool,
@@ -270,14 +268,14 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
 
         //Initial display message
         let mut display_lines = [
-            display_line {
+            DisplayLine {
                 text: str32::from("    SnackBot"),
                 changed: true,
                 scrolling: false,
                 scroll_index:0,
 
             },
-            display_line {
+            DisplayLine {
                 text: str32::from("Initializing..."),
                 changed: true,
                 scrolling: false,

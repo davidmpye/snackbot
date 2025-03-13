@@ -60,8 +60,8 @@ pub async fn chiller_task(
         
         match steinhart_temp_calc(res_val as f64, a, b, c) {
             Ok(temp) => {
-                info!("Temperature in Celsius: {}", temp);
-                let chiller_state = if temp as f32 > setpoint + 0.5 as f32 {
+                info!("Drinks chiller temperature: {}'C", temp);
+                let chiller_on = if temp as f32 > setpoint + 0.5 as f32 {
                     true
                 }
                 else {
@@ -71,7 +71,7 @@ pub async fn chiller_task(
                 {
                     let mut r = DISPENSER_DRIVER.lock().await;
                     let driver = r.as_mut().expect("Motor driver must be stored in mutex");
-                    driver.set_chiller_on(chiller_state).await
+                    driver.set_chiller_on(chiller_on).await
                 }
 
                 //Wait 10 mins prior to checking again.
