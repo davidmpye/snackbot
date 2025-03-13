@@ -1,9 +1,6 @@
 #![no_std]
 #![no_main]
 
-use defmt::*;
-
-
 use assign_resources::assign_resources;
 
 mod mdb_driver;
@@ -27,10 +24,7 @@ use embassy_usb::Config as UsbConfig;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
-use embassy_rp::{adc, bind_interrupts, peripherals};
-use embassy_rp::adc::{Adc, Async, Config, InterruptHandler};
-
-
+use embassy_rp::{adc, adc::{Adc, Async, Config, InterruptHandler}, bind_interrupts, peripherals};
 use embassy_rp::gpio::Pull;
 
 use embassy_time::Duration;
@@ -137,9 +131,7 @@ assign_resources! {
 }
 
 static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);    
-
 static DISPENSER_DRIVER: Mutex<ThreadModeRawMutex, Option<MotorDriver>> = Mutex::new(None);
-
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {

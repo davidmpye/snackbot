@@ -1,12 +1,26 @@
 use defmt::*;
-
-use crate::DISPENSER_DRIVER;
-
 use libm::{log, pow };
+
 use embassy_rp::adc::{Adc, Async, Config, InterruptHandler};
 use embassy_time::{Duration, Timer};
 use embassy_rp::adc;
 
+use crate::DISPENSER_DRIVER;
+
+const DEFAULT_TEMPERATURE_SETPOINT:f32 = 8.0;
+
+const NUM_MEASUREMENTS_TO_AVERAGE:usize = 10;
+const MEASUREMENT_INTERVAL_MS:u64 = 10;
+const TEMPERATURE_MEASURE_INTERVAL_SECONDS: u64 = 60;
+const CHILLER_MIN_CYCLE_COUNT: u8 = 5; //This is a multiple of the measurement interval
+
+const THERMISTOR_PULLUP_VAL_OHMS:u64 = 10000;
+
+const THERMISTOR_A_VAL:f64 = 2.10850817e-3;
+const THERMISTOR_B_VAL:f64 = 7.97920473e-5;
+const THERMISTOR_C_VAL:f64 = 6.53507631e-7;
+
+//From: https://pico.implrust.com/thermistor/steinhart.html
 fn steinhart_temp_calc(
     resistance: f64, // Resistance in Ohms
     a: f64,          // Coefficient A
@@ -19,7 +33,7 @@ fn steinhart_temp_calc(
     // Calculate temperature in Kelvin using Steinhart-Hart equation:
     // 1/T = A + B*ln(R) + C*(ln(R))^3
     let ln_r = log(resistance);
-    let inverse_temperature = a + b * ln_r + c * pow(ln_r, 3 as  f64);//ln_r.powi(3);
+    let inverse_temperature = a + b * ln_r + c * pow(ln_r, 3.0);//ln_r.powi(3);
 
     if inverse_temperature == 0.0 {       
          return Err(());
@@ -31,55 +45,58 @@ fn steinhart_temp_calc(
     Ok(temperature_celsius)
 }
 
-
 #[embassy_executor::task]
 pub async fn chiller_task(
     mut adc: Adc<'static, Async>,
     mut p26: adc::Channel<'static>,
 ) -> ! {
-    let mut measurements = [0u16; 10];
+    let mut measurements = [0u16; NUM_MEASUREMENTS_TO_AVERAGE];
     let mut pos = 0;
-    let mut setpoint:f32 = 15.0;
+    let mut setpoint:f32 = DEFAULT_TEMPERATURE_SETPOINT;
+
+    let mut chiller_change_cycle_count = 0;
+    let mut chiller_current_state = false;
 
     loop {
-        //Take 10 temperature measurements, each 100mS apart
-        for i in 0..10 {
-            measurements[i] = adc.read(&mut p26).await.unwrap();
-            Timer::after(Duration::from_millis(100)).await;
+        //Take specified number of measuremeents and average them.
+        for val in measurements.iter_mut() {
+            *val = adc.read(&mut p26).await.unwrap();
+            Timer::after(Duration::from_millis(MEASUREMENT_INTERVAL_MS)).await;
         }
-        //Average them
-        let average = measurements.iter().sum::<u16>() / 10;
+        let average = measurements.iter().sum::<u16>() / NUM_MEASUREMENTS_TO_AVERAGE as u16;
         
-        //Our thermistor is a 10k thermistor, pulled up by 10k.
-        let adc_voltage = (average as f32 / 4095 as f32) * 3300 as f32;
-        let res_val =  (adc_voltage  * 10000 as f32) / (3300 as f32 - adc_voltage)  as f32;
-
-        let a = 2.10850817e-3;
-        let b = 7.97920473e-5;
-        let c = 6.53507631e-7;
+        let adc_voltage = (average as f32 / 4095.0) * 3300.0; //4095 steps in the 12 bit ADC
+        let res_val =  (adc_voltage  * THERMISTOR_PULLUP_VAL_OHMS as f32) / (3300.0 - adc_voltage); //3300mV = VRef
         
-        match steinhart_temp_calc(res_val as f64, a, b, c) {
+        match steinhart_temp_calc(res_val as f64, THERMISTOR_A_VAL, THERMISTOR_B_VAL, THERMISTOR_C_VAL) {
             Ok(temp) => {
                 info!("Drinks chiller temperature: {}'C", temp);
-                let chiller_on = if temp as f32 > setpoint + 0.5 as f32 {
-                    true
+                if chiller_change_cycle_count == CHILLER_MIN_CYCLE_COUNT {
+                    let chiller_new_state = if temp as f32 > setpoint + 0.5 {
+                        true
+                    }
+                    else {
+                        false
+                    };
+                    if chiller_new_state != chiller_current_state {
+                        //If the desired chiler state has changed, apply it
+                        let mut r = DISPENSER_DRIVER.lock().await;
+                        let driver = r.as_mut().expect("Motor driver must be stored in mutex");
+                        info!("Setting chiller state to {}", chiller_new_state);
+                        driver.set_chiller_on(chiller_new_state).await;
+                        chiller_current_state = chiller_new_state;
+                    }      
+                    chiller_change_cycle_count = 0;
                 }
                 else {
-                    false
-                };
-
-                {
-                    let mut r = DISPENSER_DRIVER.lock().await;
-                    let driver = r.as_mut().expect("Motor driver must be stored in mutex");
-                    driver.set_chiller_on(chiller_on).await
+                    chiller_change_cycle_count +=1;
                 }
-
-                //Wait 10 mins prior to checking again.
-                Timer::after(Duration::from_secs(60 * 10)).await;
-            }
+            },
             Err(e) => {
                 error!("Temperature calculation error");
             }
         }
+        //Wait specified number of minutes prior to checking again.
+        Timer::after(Duration::from_secs(TEMPERATURE_MEASURE_INTERVAL_SECONDS)).await;
     }
 }
