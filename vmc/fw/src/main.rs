@@ -1,21 +1,11 @@
 #![no_std]
 #![no_main]
 
-use assign_resources::assign_resources;
-
-mod mdb_driver;
-mod motor_driver;
-mod usb_device_handler;
-mod chiller_driver;
-
-use mdb_driver::coinacceptor_poll_task;
-use motor_driver::{motor_driver_dispense_task, motor_driver_dispenser_status};
-use chiller_driver::chiller_task;
-
-use embassy_sync::mutex::Mutex;
+use {defmt_rtt as _, panic_probe as _};
 
 use embassy_executor::Spawner;
 
+use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 
@@ -30,13 +20,12 @@ use embassy_rp::gpio::Pull;
 use embassy_time::Duration;
 
 use static_cell::{ConstStaticCell, StaticCell};
+use assign_resources::assign_resources;
 
-use vmc_icd::{
-    CoinInsertedTopic, DispenseEndpoint, DispenserStatusEndpoint, EventTopic, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
-};
-
-use crate::motor_driver::MotorDriver;
 use pio_9bit_uart_async::PioUart;
+use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
+use mdb_async::Mdb;
+
 use postcard_rpc::{
     define_dispatch,
     server::{
@@ -50,13 +39,21 @@ use postcard_rpc::{
     },
 };
 
+use vmc_icd::{
+    CoinInsertedTopic, DispenseEndpoint, DispenserStatusEndpoint, EventTopic, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST,
+};
+
+mod mdb_driver;
+mod motor_driver;
+mod usb_device_handler;
+mod chiller_driver;
+
+use mdb_driver::coinacceptor_poll_task;
+use motor_driver::{MotorDriver, motor_driver_dispense_task, motor_driver_dispenser_status};
+use chiller_driver::chiller_task;
+
 use usb_device_handler::usb_task;
 use usb_device_handler::UsbDeviceHandler;
-
-use {defmt_rtt as _, panic_probe as _};
-
-use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
-use mdb_async::Mdb;
 
 type AppDriver = usb::Driver<'static, USB>;
 type BufStorage = PacketBuffers<1024, 1024>;
