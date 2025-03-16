@@ -1,7 +1,6 @@
 #![cfg_attr(not(feature = "use-std"), no_std)]
 
 use postcard_rpc::{endpoints, topics, TopicDirection};
-use postcard_schema::Schema;
 
 pub type DisplayText =  [[u8;32];2];
 

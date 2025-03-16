@@ -8,6 +8,12 @@ use keyboard_icd::{SetBacklight, SetText};
 
 use std::convert::Infallible;
 
+
+pub enum LcdCommand {
+    SetText(String, String),
+    SetBackLight(bool),
+}
+
 #[derive(Debug)]
 pub enum LcdClientError<E> {
     Comms(HostErr<WireError>),
@@ -27,7 +33,7 @@ pub struct LcdDriver {
 impl LcdDriver {
     pub fn new() -> Result<Self, String> {
         match HostClient::try_new_raw_nusb(
-            |c| c.product_string() == Some("keyboard"),
+            |c| c.product_string() == Some("matrix-keyboard"),
             ERROR_PATH,
             8,
             VarSeqKind::Seq2,

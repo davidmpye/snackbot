@@ -4,8 +4,8 @@ use postcard_rpc::{
     standard_icd::{PingEndpoint, WireError, ERROR_PATH},
 };
 
-use vmc_icd::{Dispense, ForceDispense, DispenserAddress, Dispenser};
-
+use vmc_icd::{dispenser::{ DispenseCommand, Dispenser, DispenserAddress}, DispenserStatusEndpoint, };//; SetCoinAcceptorEnabled};
+use vmc_icd::DispenseEndpoint;
 use std::convert::Infallible;
 
 #[derive(Debug)]
@@ -18,6 +18,26 @@ impl<E> From<HostErr<WireError>> for VmcClientError<E> {
     fn from(value: HostErr<WireError>) -> Self {
         Self::Comms(value)
     }
+}
+
+use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting,};
+
+#[derive (Copy, Clone)]
+pub enum VmcCommand {
+    VendItem(char,char),
+    ForceVendItem(char, char),
+    GetMachineMap(),                //Get a vec of dispenser
+    GetDispenser(char,char),            //Get information about a specific dispenser
+    SetCoinAcceptorEnabled(bool),   //Whether the coin acceptor should accept coins
+    RefundCoins(u16),               //Refund amount
+}
+
+pub enum VmcResponse {
+    MachineMap(Vec<Dispenser>),
+    Dispenser(Dispenser),
+    //Vend result for a vend request
+    CoinAcceptorEvent(CoinAcceptorEvent),
+    CoinInsertedEvent(CoinInserted)
 }
 
 pub struct VmcDriver {
@@ -38,27 +58,34 @@ impl VmcDriver {
     }
 
     pub async fn dispense(&mut self, addr: DispenserAddress) -> Result<(), VmcClientError<Infallible>>{
-        let _res = self.driver.send_resp::<Dispense>(&addr).await?;
+        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::Vend(addr)).await?;
         Ok(())
     }
 
     pub async fn force_dispense(&mut self, addr: DispenserAddress) -> Result<(), VmcClientError<Infallible>>{
-        let _res = self.driver.send_resp::<ForceDispense>(&addr).await?;
+        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::ForceVend(addr)).await?;
         Ok(())
     }
 
     pub async fn map_machine(&mut self) -> Vec<Dispenser> { 
         let dispensers:Vec<Dispenser> = Vec::new();
-        
         //For all possible machine addresses, see if there is a dispenser present
-        for row in [ 'A', 'B', 'C', 'D', 'E', 'F','G' ] {
-            for col in ['0','1','2','3','4','5','6','7','8','9'] {
-              //  let disp = self.driver.send_resp::<DispenserStatus><&addr>.await;
-
+        for r in [ 'A', 'B', 'C', 'D', 'E', 'F','G' ] {
+            for c in ['0','1','2','3','4','5','6','7','8','9'] {
+                let disp = self.driver.send_resp::<DispenserStatusEndpoint>(&DispenserAddress{row:r, col:c}).await;
             }
         }
-
         dispensers
     }
 
+    //Sets whether the coin acceptor should accept coins or not
+    pub async fn set_coinacceptor_enabled(&mut self, enable:bool) -> Result<(), VmcClientError<Infallible>> {
+    //    let _res = self.driver.send_resp::<SetCoinAcceptorEnabled>(&enable).await?;
+        Ok(())
+    }
+
+    pub async fn dispense_coins(&mut self, value: u16) -> Result<(u16), VmcClientError<Infallible>> {
+      //  let amount_refunded = self.driver.send_resp::<DispenseCoins>(&value).await?;
+        Ok(10)
+    }
 }

@@ -3,6 +3,8 @@ name = "vmc-icd"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+
 [dependencies.serde]
 version = "1.0"
 features = ["derive"]
