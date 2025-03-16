@@ -22,16 +22,16 @@ pub async fn motor_driver_dispense_task(
 ) {
     let mut r = DISPENSER_DRIVER.lock().await;
     let driver = r.as_mut().expect("Motor driver must be stored in mutex");
+    debug!("Sending dispense command");
     let result = match rqst {
         DispenseCommand::Vend(addr) => {
-            info!("Attempted vend");
             driver.dispense(addr).await
         }
         DispenseCommand::ForceVend(addr) => {
-            info!("Attempted forcevend");
             driver.force_dispense(addr).await
         }
     };
+    debug!("Awaiting reply from dispense task");
     let _ = sender.reply::<DispenseEndpoint>(header.seq_no, &result).await;
 }
 

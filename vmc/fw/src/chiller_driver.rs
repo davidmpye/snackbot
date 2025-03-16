@@ -1,4 +1,4 @@
-use embassy_rp::adc::{Adc, Async, Config, InterruptHandler};
+use embassy_rp::adc::{Adc, Async};
 use embassy_time::{Duration, Timer};
 use embassy_rp::adc;
 
@@ -10,8 +10,8 @@ use crate::DISPENSER_DRIVER;
 const DEFAULT_TEMPERATURE_SETPOINT:f32 = 8.0;
 
 const NUM_MEASUREMENTS_TO_AVERAGE:usize = 10;
-const MEASUREMENT_INTERVAL_MS:u64 = 10;
-const TEMPERATURE_MEASURE_INTERVAL_SECONDS: u64 = 60;
+const MEASUREMENT_DELAY:Duration = Duration::from_millis(10);
+const TEMPERATURE_MEASURE_INTERVAL:Duration = Duration::from_secs(60);
 const CHILLER_MIN_CYCLE_COUNT: u8 = 5; //This is a multiple of the measurement interval
 
 const THERMISTOR_PULLUP_VAL_OHMS:u64 = 10000;
@@ -26,8 +26,8 @@ pub async fn chiller_task(
     mut channel: adc::Channel<'static>,
 ) -> ! {
     let mut measurements = [0u16; NUM_MEASUREMENTS_TO_AVERAGE];
-    let mut pos = 0;
-    let mut setpoint:f32 = DEFAULT_TEMPERATURE_SETPOINT;
+    //Fixme - add channel to allow setpoint to be changed
+    let setpoint:f32 = DEFAULT_TEMPERATURE_SETPOINT;
 
     let mut chiller_change_cycle_count = 0;
     let mut chiller_current_state = false;
@@ -36,7 +36,7 @@ pub async fn chiller_task(
         //Take specified number of measurements and average them.
         for val in measurements.iter_mut() {
             *val = adc.read(&mut channel).await.unwrap();
-            Timer::after(Duration::from_millis(MEASUREMENT_INTERVAL_MS)).await;
+            Timer::after(MEASUREMENT_DELAY).await;
         }
         let average = measurements.iter().sum::<u16>() / NUM_MEASUREMENTS_TO_AVERAGE as u16;
         
@@ -45,7 +45,8 @@ pub async fn chiller_task(
         
         match steinhart_temp_calc(res_val as f64, THERMISTOR_A_VAL, THERMISTOR_B_VAL, THERMISTOR_C_VAL) {
             Ok(temp) => {
-                info!("Drinks chiller temperature: {}'C, target {}'C", temp, setpoint);
+                //We only turn on/off the chiller every MIN_CYCLE_COUNT poll intervals as it won't like
+                //being repeatedly turned on/off.
                 if chiller_change_cycle_count == CHILLER_MIN_CYCLE_COUNT {
                     let chiller_new_state = if temp as f32 > setpoint + 0.5 {
                         true
@@ -66,13 +67,14 @@ pub async fn chiller_task(
                 else {
                     chiller_change_cycle_count +=1;
                 }
+                info!("Drinks chiller temperature: {}'C, target {}'C, chiller_on: {}", temp, setpoint, chiller_current_state);
             },
-            Err(e) => {
-                error!("Temperature calculation error");
+            Err(_e) => {
+                error!("Steinhart-Hart temperature calculation error");
             }
         }
-        //Wait specified number of minutes prior to checking again.
-        Timer::after(Duration::from_secs(TEMPERATURE_MEASURE_INTERVAL_SECONDS)).await;
+        //Wait specified period prior to checking again.
+        Timer::after(TEMPERATURE_MEASURE_INTERVAL).await;
     }
 }
 
