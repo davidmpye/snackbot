@@ -5661,7 +5661,7 @@
 			)
 		)
 		(instances
-			(project "VendoProto"
+			(project "pcb"
 				(path "/35d1f57f-3040-441a-96c3-b5f4e66bd46e"
 					(page "2")
 				)
@@ -5712,7 +5712,7 @@
 			)
 		)
 		(instances
-			(project "VendoProto"
+			(project "pcb"
 				(path "/35d1f57f-3040-441a-96c3-b5f4e66bd46e"
 					(page "3")
 				)
@@ -5754,7 +5754,7 @@
 			)
 		)
 		(instances
-			(project "VendoProto"
+			(project "pcb"
 				(path "/35d1f57f-3040-441a-96c3-b5f4e66bd46e"
 					(page "4")
 				)
