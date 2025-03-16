@@ -48,12 +48,7 @@ pub async fn chiller_task(
                 //We only turn on/off the chiller every MIN_CYCLE_COUNT poll intervals as it won't like
                 //being repeatedly turned on/off.
                 if chiller_change_cycle_count == CHILLER_MIN_CYCLE_COUNT {
-                    let chiller_new_state = if temp as f32 > setpoint + 0.5 {
-                        true
-                    }   
-                    else {
-                        false
-                    };
+                    let chiller_new_state=  temp as f32 > setpoint + 0.5;
                     if chiller_new_state != chiller_current_state {
                         //If the desired chiler state has changed, apply it
                         let mut r = DISPENSER_DRIVER.lock().await;

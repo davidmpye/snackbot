@@ -36,7 +36,7 @@ pub async fn motor_driver_dispense_task(
 }
 
 pub async fn motor_driver_dispenser_status(    
-    context: &mut Context,
+    _context: &mut Context,
     _header: VarHeader,
     addr: DispenserAddress) -> Option<Dispenser> {
     let mut r = DISPENSER_DRIVER.lock().await;

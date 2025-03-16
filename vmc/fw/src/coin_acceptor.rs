@@ -15,7 +15,6 @@ use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::Channel;
 
 use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
-use mdb_async::{coin_acceptor, Mdb};
 use vmc_icd::EventTopic;
 
 use vmc_icd::CoinInsertedTopic;
@@ -112,7 +111,7 @@ pub async fn coinacceptor_process_poll_events(
                         let _ = postcard_sender
                             .publish::<EventTopic>(seq.into(), &CoinAcceptorEvent::from(*byte))
                             .await;
-                        seq = seq + 1;
+                        seq += 1;
                     }
                     PollEvent::Coin(x) => {
                         info!("Coin inserted - unscaled value: {}", x.unscaled_value);
@@ -123,7 +122,7 @@ pub async fn coinacceptor_process_poll_events(
                         let _ = postcard_sender
                             .publish::<CoinInsertedTopic>(seq.into(), &coinevent)
                             .await;
-                        seq = seq + 1;
+                        seq += 1;
                     }
                     _ => {}
                 }

@@ -23,7 +23,7 @@ use static_cell::{ConstStaticCell, StaticCell};
 use assign_resources::assign_resources;
 
 use pio_9bit_uart_async::PioUart;
-use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
+
 use mdb_async::Mdb;
 
 use postcard_rpc::{
@@ -33,13 +33,11 @@ use postcard_rpc::{
             dispatch_impl::{
                 spawn_fn, WireRxBuf, WireRxImpl, WireSpawnImpl, WireStorage, WireTxImpl,
             },
-            EUsbWireTx, PacketBuffers,
+            PacketBuffers,
         },
         Dispatch, Sender, Server, SpawnContext,
     },
 };
-use embassy_sync::channel::Channel;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 
 
 
