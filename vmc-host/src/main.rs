@@ -27,6 +27,11 @@ const APP_ID: &str = "uk.org.makerspace.snackbot";
 const KEYBOARD_DEVICE_NAME: &str = "matrix-keyboard";
 const VMC_DEVICE_NAME: &str = "vmc";
 
+const IDLE_MESSAGE_L1: &str = "Plz buy m0ar";
+const IDLE_MESSAGE_L2: &str = "snackz kthx";
+
+const PAY_MESSAGE_L1: &str = "Please pay:";
+
 use glib::clone;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -142,6 +147,9 @@ impl App {
 
         window.present();
 
+
+        lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
+
         Self {
             state: AppState::Idle,
             credit: 0,
@@ -211,6 +219,9 @@ impl App {
                                 }) {
                                     Some(item) => {
                                         self.amount_due = item.price;
+                                        let balance_due = self.amount_due - self.credit;
+                                        self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(PAY_MESSAGE_L1), 
+                                            format!("£{pound}.{pence}", pound = balance_due/100, pence = balance_due%100)));
                                     }
                                     None => {
                                         println!("Error - item no longer found - shouldnt happen!");
@@ -226,7 +237,6 @@ impl App {
                                 self.col_selected = None;
                                 self.state = AppState::Idle;
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
-
                             }
                             _ => {}
                         }
@@ -273,9 +283,6 @@ impl App {
                         println!("Other event - not handled");
                     }
                 }
-                let balance_due = self.amount_due - self.credit;
-                self.lcd_channel.send_blocking(LcdCommand::SetText(String::from("Please pay:"), 
-                    format!("£{pound}.{pence}", pound = balance_due/100, pence = balance_due%100)));
             }
             _ => {}
         }
@@ -315,6 +322,8 @@ impl App {
                         self.col_selected.unwrap()
                     }
                 };
+                //Display idle message
+                self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
             }
             AppState::AwaitingConfirmation => {
                 match get_stock_item(DispenserAddress {
