@@ -245,13 +245,16 @@ impl App {
                          self.state = AppState::Idle;
                          //Disable coin acceptor
                          let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
+                         //Need to refund coins if any inserted
                     },
                     Event::CoinInserted(value) => {
                         //Update the credit
-                        println!("Got paid {}", value)
+                        self.credit += value;
+                        println!("Got paid {}, balance {}", value, self.credit);
+                        self.lcd_channel.send_blocking(LcdCommand::SetText(String::from("Remaining balance:"), format!("{}", self.credit)));
                     }
                     _ => {
-                        println!("Got escrow");
+                        println!("Other event - not handled");
                     }
                 }
             }
