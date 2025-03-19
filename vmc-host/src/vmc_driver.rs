@@ -5,7 +5,7 @@ use postcard_rpc::{
 };
 
 use vmc_icd::{dispenser::{ DispenseCommand, Dispenser, DispenserAddress}, DispenserStatusEndpoint, };//; SetCoinAcceptorEnabled};
-use vmc_icd::DispenseEndpoint;
+use vmc_icd::{CoinAcceptorEnableEndpoint,DispenseEndpoint};
 use std::convert::Infallible;
 
 #[derive(Debug)]
@@ -80,7 +80,7 @@ impl VmcDriver {
 
     //Sets whether the coin acceptor should accept coins or not
     pub async fn set_coinacceptor_enabled(&mut self, enable:bool) -> Result<(), VmcClientError<Infallible>> {
-    //    let _res = self.driver.send_resp::<SetCoinAcceptorEnabled>(&enable).await?;
+        let _res = self.driver.send_resp::<CoinAcceptorEnableEndpoint>(&enable).await?;
         Ok(())
     }
 
