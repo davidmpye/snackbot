@@ -93,6 +93,7 @@ enum AppState {
 struct App {
     pub state: AppState,
     pub credit: u16,
+    pub amount_due: u16,
     pub row_selected: Option<char>,
     pub col_selected: Option<char>,
 
@@ -144,6 +145,7 @@ impl App {
         Self {
             state: AppState::Idle,
             credit: 0,
+            amount_due: 0,
             row_selected: None,
             col_selected: None,
             stack,
@@ -201,8 +203,22 @@ impl App {
                             '\n' => {
                                 //Into payment sate
                                 self.state = AppState::AwaitingPayment;
+
+                                //Find the item and set the balance
+                                match get_stock_item(DispenserAddress {
+                                    row: self.row_selected.unwrap(),
+                                    col: self.col_selected.unwrap(),
+                                }) {
+                                    Some(item) => {
+                                        self.amount_due = item.price;
+                                    }
+                                    None => {
+                                        println!("Error - item no longer found - shouldnt happen!");
+                                    }
+                                }
                                 //Enable coin acceptor
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(true));
+
                             }
                             '\x1b' => {
                                 //Cancel
@@ -243,6 +259,7 @@ impl App {
                          self.row_selected = None;
                          self.col_selected = None;
                          self.state = AppState::Idle;
+                         self.amount_due = 0;
                          //Disable coin acceptor
                          let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
                          //Need to refund coins if any inserted
@@ -251,12 +268,14 @@ impl App {
                         //Update the credit
                         self.credit += value;
                         println!("Got paid {}, balance {}", value, self.credit);
-                        self.lcd_channel.send_blocking(LcdCommand::SetText(String::from("Remaining balance:"), format!("{}", self.credit)));
                     }
                     _ => {
                         println!("Other event - not handled");
                     }
                 }
+                let balance_due = self.amount_due - self.credit;
+                self.lcd_channel.send_blocking(LcdCommand::SetText(String::from("Please pay:"), 
+                    format!("£{pound}.{pence}", pound = balance_due/100, pence = balance_due%100)));
             }
             _ => {}
         }
