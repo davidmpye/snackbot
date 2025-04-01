@@ -5,6 +5,7 @@ use {defmt_rtt as _, panic_probe as _};
 
 use embassy_executor::Spawner;
 
+use embassy_rp::gpio::Pin;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
@@ -15,7 +16,7 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
 use embassy_rp::{adc, adc::{Adc, Config, InterruptHandler}, bind_interrupts, peripherals};
-use embassy_rp::gpio::Pull;
+use embassy_rp::gpio::{Pull, Output, Level};
 
 use embassy_time::Duration;
 
@@ -133,7 +134,8 @@ assign_resources! {
         pin: PIN_26,
     }
     watchdog: WatchdogResources {
-        watchdog : WATCHDOG
+        watchdog : WATCHDOG,
+        heartbeat_pin: PIN_22,
     }
 }
 
@@ -143,10 +145,10 @@ static DISPENSER_DRIVER: Mutex<CriticalSectionRawMutex, Option<MotorDriver>> = M
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
-    let resources = split_resources!(p);
-    
+       let resources = split_resources!(p);
+   
     //Spawn the watchdog task first
-    spawner.must_spawn(watchdog_task(resources.watchdog.watchdog));
+    spawner.must_spawn(watchdog_task(resources.watchdog.watchdog, Output::new(resources.watchdog.heartbeat_pin, Level::High)));
 
     // Create the driver from the HAL.
     let driver = UsbDriver::new(p.USB, Irqs);

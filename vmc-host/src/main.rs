@@ -298,8 +298,8 @@ impl App {
             AppState::Idle => {
                 
                 self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1),
-                String::from(IDLE_MESSAGE_L2));
-                
+                    String::from(IDLE_MESSAGE_L2)));
+
                 //In this state, we should be showing the select item widgetstack 'page'
                 self.stack.set_visible_child(
                     &self
@@ -351,9 +351,9 @@ impl App {
             }
             AppState::AwaitingPayment => {
 
-                let balance_due = self.balance_due - self.credit;
+                let balance_due = self.amount_due - self.credit;
                 
-                self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(PAY_MESSAGE_L1), 
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(PAY_MESSAGE_L1), 
                 format!("{}.{:02}", balance_due/100, balance_due%100)));
 
                 self.stack.set_visible_child(
