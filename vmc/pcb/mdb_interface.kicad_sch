@@ -5910,7 +5910,7 @@
 				)
 			)
 		)
-		(property "Value" "R"
+		(property "Value" "1K4"
 			(at 39.37 177.8 90)
 			(effects
 				(font
@@ -6048,7 +6048,7 @@
 				)
 			)
 		)
-		(property "Value" "R"
+		(property "Value" "60R4"
 			(at 146.05 177.8 90)
 			(effects
 				(font
@@ -7118,7 +7118,7 @@
 				)
 			)
 		)
-		(property "Value" "R"
+		(property "Value" "60R4"
 			(at 109.22 177.8 90)
 			(effects
 				(font
@@ -7252,7 +7252,7 @@
 				)
 			)
 		)
-		(property "Value" "R"
+		(property "Value" "60R4"
 			(at 68.58 177.8 90)
 			(effects
 				(font
