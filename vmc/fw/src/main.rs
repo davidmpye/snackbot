@@ -130,8 +130,9 @@ assign_resources! {
         oe: PIN_11,
         clr: PIN_12,
     },
-    adc_pin: AdcResources {
-        pin: PIN_26,
+    chiller: ChillerResources {
+        thermistor_pin: PIN_26,
+        led_pin: PIN_19
     }
     watchdog: WatchdogResources {
         watchdog : WATCHDOG,
@@ -181,8 +182,8 @@ async fn main(spawner: Spawner) {
 
     //Set up the ADC for the chiller thermistor and spawn its' task
     let adc = Adc::new(p.ADC, Irqs, Config::default());
-    let p26 = adc::Channel::new_pin(resources.adc_pin.pin, Pull::None);
-    spawner.must_spawn(chiller_task(adc, p26)); 
+    let adc_channel = adc::Channel::new_pin(resources.chiller.thermistor_pin, Pull::None);
+    spawner.must_spawn(chiller_task(adc, adc_channel, Output::new(resources.chiller.led_pin, Level::Low))); 
 
     //Set up the multi-drop bus peripheral (and its' PIO backed 9 bit uart) 
     let uart: PioUart<'_, 0> = PioUart::new(
