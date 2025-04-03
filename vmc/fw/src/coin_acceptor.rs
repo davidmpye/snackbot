@@ -85,7 +85,7 @@ pub async fn coin_acceptor_task(
                         }
                     }
                     Err(_e) => {
-                        error!("Task Command Channel rx error");
+                    //    error!("Task Command Channel rx error");
                     }
                 }
             },

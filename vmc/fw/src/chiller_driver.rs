@@ -20,9 +20,15 @@ const THERMISTOR_PULLUP_VAL_OHMS:u64 = 10000;
 
 //For a 2.2k thermistor (https://www.bapihvac.com/wp-content/uploads/2010/11/Thermistor_2.2K.pdf),
 //calculated using https://rusefi.com/Steinhart-Hart.html
-const THERMISTOR_A_VAL:f64 = 1.4726620300667711e-3;
-const THERMISTOR_B_VAL:f64 = 2.3739290559817496e-4;
-const THERMISTOR_C_VAL:f64 = 1.060205944258554e-7;
+//const THERMISTOR_A_VAL:f64 = 1.4726620300667711e-3;
+//const THERMISTOR_B_VAL:f64 = 2.3739290559817496e-4;
+//const THERMISTOR_C_VAL:f64 = 1.060205944258554e-7;
+
+//3.3k:
+const THERMISTOR_A_VAL:f64 = 1.3811057615602958e-3;
+const THERMISTOR_B_VAL:f64 = 2.370102475713365e-4;
+const THERMISTOR_C_VAL:f64 = 9.879312896211082e-8;
+
 
 #[embassy_executor::task]
 pub async fn chiller_task(
@@ -38,7 +44,7 @@ pub async fn chiller_task(
     let mut chiller_current_state = false;
 
     loop {
-        //Take specified number of measurements and average them.
+        //Take specified number of measurements and average them.c
         for val in measurements.iter_mut() {
             *val = adc.read(&mut channel).await.unwrap();
             Timer::after(MEASUREMENT_DELAY).await;
@@ -62,7 +68,7 @@ pub async fn chiller_task(
                         driver.set_chiller_on(chiller_new_state).await;
                         chiller_current_state = chiller_new_state;
 
-                        //Set the board-mounted status LED to the chiller state
+                        //Set the board-mounted status LED to
                         let led_level = if chiller_current_state {
                             Level::High
                         }
