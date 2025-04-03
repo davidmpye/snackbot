@@ -18,9 +18,11 @@ const CHILLER_MIN_CYCLE_COUNT: u8 = 5; //This is a multiple of the measurement i
 
 const THERMISTOR_PULLUP_VAL_OHMS:u64 = 10000;
 
-const THERMISTOR_A_VAL:f64 = 2.10850817e-3;
-const THERMISTOR_B_VAL:f64 = 7.97920473e-5;
-const THERMISTOR_C_VAL:f64 = 6.53507631e-7;
+//For a 2.2k thermistor (https://www.bapihvac.com/wp-content/uploads/2010/11/Thermistor_2.2K.pdf),
+//calculated using https://rusefi.com/Steinhart-Hart.html
+const THERMISTOR_A_VAL:f64 = 1.4726620300667711e-3;
+const THERMISTOR_B_VAL:f64 = 2.3739290559817496e-4;
+const THERMISTOR_C_VAL:f64 = 1.060205944258554e-7;
 
 #[embassy_executor::task]
 pub async fn chiller_task(
@@ -32,7 +34,7 @@ pub async fn chiller_task(
     //Fixme - add channel to allow setpoint to be changed
     let setpoint:f32 = DEFAULT_TEMPERATURE_SETPOINT;
 
-    let mut chiller_change_cycle_count = 0;
+    let mut chiller_change_cycle_count = CHILLER_MIN_CYCLE_COUNT; //this forces initial compute
     let mut chiller_current_state = false;
 
     loop {
@@ -60,6 +62,7 @@ pub async fn chiller_task(
                         driver.set_chiller_on(chiller_new_state).await;
                         chiller_current_state = chiller_new_state;
 
+                        //Set the board-mounted status LED to the chiller state
                         let led_level = if chiller_current_state {
                             Level::High
                         }
