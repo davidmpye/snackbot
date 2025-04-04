@@ -40,24 +40,23 @@ use postcard_rpc::{
     },
 };
 
-
-
 use vmc_icd::*;
 
 mod coin_acceptor;
 mod motor_driver;
 mod usb_device_handler;
 mod chiller_driver;
-
 mod watchdog;
 
 use coin_acceptor::{coin_acceptor_task, set_coin_acceptor_enabled};
 
 use motor_driver::{MotorDriver, motor_driver_dispense_task, motor_driver_dispenser_status};
-use chiller_driver::chiller_task;
 
 use usb_device_handler::usb_task;
 use usb_device_handler::UsbDeviceHandler;
+
+use chiller_driver::chiller_task;
+
 use watchdog::watchdog_task;
 
 type AppDriver = usb::Driver<'static, USB>;

@@ -5910,7 +5910,7 @@
 				)
 			)
 		)
-		(property "Value" "1K4"
+		(property "Value" "1.4K"
 			(at 39.37 177.8 90)
 			(effects
 				(font
@@ -6048,7 +6048,7 @@
 				)
 			)
 		)
-		(property "Value" "60R4"
+		(property "Value" "5.1R"
 			(at 146.05 177.8 90)
 			(effects
 				(font
@@ -6980,7 +6980,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "700R"
+		(property "Value" "750R"
 			(at 25.4 92.456 0)
 			(effects
 				(font
@@ -7118,7 +7118,7 @@
 				)
 			)
 		)
-		(property "Value" "60R4"
+		(property "Value" "5.1R"
 			(at 109.22 177.8 90)
 			(effects
 				(font
@@ -7252,7 +7252,7 @@
 				)
 			)
 		)
-		(property "Value" "60R4"
+		(property "Value" "5.1R"
 			(at 68.58 177.8 90)
 			(effects
 				(font
