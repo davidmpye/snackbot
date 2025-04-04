@@ -2,6 +2,7 @@
 #![no_main]
 
 use {defmt_rtt as _, panic_probe as _};
+use defmt::*;
 
 use embassy_executor::Spawner;
 
@@ -174,33 +175,7 @@ async fn main(spawner: Spawner) {
     let device_handler = DEVICE_HANDLER.init(UsbDeviceHandler::new());
     builder.handler(device_handler);
 
-    {
-        //Set up the dispenser motor driver struct - the task that uses it is spawned by postcard-rpc
-        let mut m = DISPENSER_DRIVER.lock().await;
-        *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
-    }
-
-    //Set up the ADC for the chiller thermistor and spawn its' task
-    let adc = Adc::new(p.ADC, Irqs, Config::default());
-    let adc_channel = adc::Channel::new_pin(resources.chiller.thermistor_pin, Pull::None);
-    spawner.must_spawn(chiller_task(adc, adc_channel, Output::new(resources.chiller.led_pin, Level::Low))); 
-
-    //Set up the multi-drop bus peripheral (and its' PIO backed 9 bit uart) 
-    let uart: PioUart<'_, 0> = PioUart::new(
-        p.PIN_21,
-        p.PIN_20,
-        p.PIO0,
-        Duration::from_millis(25),
-        Duration::from_millis(3),
-    );
-    let mdb = Mdb::new(uart);
-
-    {
-        //Place the MDB device into the mutex
-        let mut m = MDB_DRIVER.lock().await;
-        *m = Some(mdb);
-    }
-
+    debug!("Initialising Postcard-RPC server");
     //Set up the Postcard RPC server
     let context = Context {};
     let dispatcher = MyApp::new(context, spawner.into());
@@ -212,13 +187,50 @@ async fn main(spawner: Spawner) {
         dispatcher,
         vkk,
     );
+
+    {
+        debug!("Initialising motor driver");
+        //Set up the dispenser motor driver struct - the task that uses it is spawned by postcard-rpc
+        let mut m = DISPENSER_DRIVER.lock().await;
+        *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
+    }
+
+    //Set up the ADC for the chiller thermistor and spawn its' task
+    debug!("Initialising ADC");
+    let adc = Adc::new(p.ADC, Irqs, Config::default());
+    let adc_channel = adc::Channel::new_pin(resources.chiller.thermistor_pin, Pull::None);
+
+    debug!("Spawning chiller task");
+    spawner.must_spawn(chiller_task(adc, adc_channel, Output::new(resources.chiller.led_pin, Level::Low))); 
+
+    //Set up the multi-drop bus peripheral (and its' PIO backed 9 bit uart) 
+    debug!("Initialising PIO UART");
+    let uart: PioUart<'_, 0> = PioUart::new(
+        p.PIN_21,
+        p.PIN_20,
+        p.PIO0,
+        Duration::from_millis(25),
+        Duration::from_millis(3),
+    );
+
+    debug!("Initialising MDB peripheral");
+    let mdb = Mdb::new(uart);
+    {
+        //Place the MDB device into the mutex
+        let mut m = MDB_DRIVER.lock().await;
+        *m = Some(mdb);
+    }
+
     // Build the builder - USB device will be run by usb_task
+    debug!("Spawning USB device task");
     let usb = builder.build();
     spawner.must_spawn(usb_task(usb));
 
     //Spawn the coin acceptor poll task
+    debug!("Spawning coin acceptor poll task");
     spawner.must_spawn(coin_acceptor_task(server.sender().clone()));
-    
+
+    debug!("Entering Postcard-RPC main loop");
     //Postcard server mainloop runs here
     loop {
         let _ = server.run().await;

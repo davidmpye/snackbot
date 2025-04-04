@@ -14,7 +14,9 @@ const DEFAULT_TEMPERATURE_SETPOINT:f32 = 8.0;
 const NUM_MEASUREMENTS_TO_AVERAGE:usize = 10;
 const MEASUREMENT_DELAY:Duration = Duration::from_millis(10);
 const TEMPERATURE_MEASURE_INTERVAL:Duration = Duration::from_secs(60);
-const CHILLER_MIN_CYCLE_COUNT: u8 = 5; //This is a multiple of the measurement interval
+const CHILLER_MIN_CYCLE_COUNT: u8 = 5;  //This is a multiple of the measurement interval - 
+                                        //the chiller will only be turned on or off this many measurement cycle
+                                        //to prevent burnout
 
 const THERMISTOR_PULLUP_VAL_OHMS:u64 = 10000;
 
@@ -52,10 +54,10 @@ pub async fn chiller_task(
         let average = measurements.iter().sum::<u16>() / NUM_MEASUREMENTS_TO_AVERAGE as u16;
         
         let adc_voltage = (average as f32 / 4095.0) * 3300.0; //4095 steps in the 12 bit ADC
-        let res_val =  (adc_voltage  * THERMISTOR_PULLUP_VAL_OHMS as f32) / (3300.0 - adc_voltage); //3300mV = VRef
-        
+        let res_val = (adc_voltage  * THERMISTOR_PULLUP_VAL_OHMS as f32) / (3300.0 - adc_voltage); //3300mV = VRef
         match steinhart_temp_calc(res_val as f64, THERMISTOR_A_VAL, THERMISTOR_B_VAL, THERMISTOR_C_VAL) {
             Ok(temp) => {
+                debug!("Thermistor resistor value (averaged): {}, temperature calculated as {}'C", res_val, temp);
                 //We only turn on/off the chiller every MIN_CYCLE_COUNT poll intervals as it won't like
                 //being repeatedly turned on/off.
                 if chiller_change_cycle_count == CHILLER_MIN_CYCLE_COUNT {
@@ -64,10 +66,9 @@ pub async fn chiller_task(
                         //If the desired chiler state has changed, apply it
                         let mut r = DISPENSER_DRIVER.lock().await;
                         let driver = r.as_mut().expect("Motor driver must be stored in mutex");
-                        debug!("Setting chiller state to {}", chiller_new_state);
+                        debug!("Chiller state now set to {}", chiller_new_state);
                         driver.set_chiller_on(chiller_new_state).await;
                         chiller_current_state = chiller_new_state;
-
                         //Set the board-mounted status LED to
                         let led_level = if chiller_current_state {
                             Level::High
