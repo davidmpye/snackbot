@@ -19,6 +19,8 @@ const CHILLER_MIN_CYCLE_COUNT: u8 = 5;  //This is a multiple of the measurement 
                                         //to prevent burnout
 
 const THERMISTOR_PULLUP_VAL_OHMS:u64 = 10000;
+const MIN_TEMP:f64 = -10.0;
+const MAX_TEMP:f64 = 40.0;
 
 //For a 2.2k thermistor (https://www.bapihvac.com/wp-content/uploads/2010/11/Thermistor_2.2K.pdf),
 //calculated using https://rusefi.com/Steinhart-Hart.html
@@ -57,33 +59,43 @@ pub async fn chiller_task(
         let res_val = (adc_voltage  * THERMISTOR_PULLUP_VAL_OHMS as f32) / (3300.0 - adc_voltage); //3300mV = VRef
         match steinhart_temp_calc(res_val as f64, THERMISTOR_A_VAL, THERMISTOR_B_VAL, THERMISTOR_C_VAL) {
             Ok(temp) => {
-                debug!("Thermistor resistor value (averaged): {}, temperature calculated as {}'C", res_val, temp);
-                //We only turn on/off the chiller every MIN_CYCLE_COUNT poll intervals as it won't like
-                //being repeatedly turned on/off.
-                if chiller_change_cycle_count == CHILLER_MIN_CYCLE_COUNT {
-                    let chiller_new_state=  temp as f32 > setpoint + 0.5;
-                    if chiller_new_state != chiller_current_state {
-                        //If the desired chiler state has changed, apply it
-                        let mut r = DISPENSER_DRIVER.lock().await;
-                        let driver = r.as_mut().expect("Motor driver must be stored in mutex");
-                        debug!("Chiller state now set to {}", chiller_new_state);
-                        driver.set_chiller_on(chiller_new_state).await;
-                        chiller_current_state = chiller_new_state;
-                        //Set the board-mounted status LED to
-                        let led_level = if chiller_current_state {
-                            Level::High
-                        }
-                        else {
-                            Level::Low
-                        };
-                        led_pin.set_level(led_level);
-                    }      
-                    chiller_change_cycle_count = 0;
+                if temp < MIN_TEMP  || temp > MAX_TEMP {
+                    error!("Thermistor error - {}'C outside acceptable range of {} to {}, chiller disabled", temp, MIN_TEMP, MAX_TEMP);
+                    //Disable chiller 
+                    let mut r = DISPENSER_DRIVER.lock().await;
+                    let driver = r.as_mut().expect("Motor driver must be stored in mutex");
+                    driver.set_chiller_on(false).await;
+                    chiller_current_state = false;
                 }
                 else {
-                    chiller_change_cycle_count +=1;
+                    debug!("Thermistor resistor value (averaged): {}, temperature calculated as {}'C", res_val, temp);
+                    //We only turn on/off the chiller every MIN_CYCLE_COUNT poll intervals as it won't like
+                    //being repeatedly turned on/off.
+                    if chiller_change_cycle_count == CHILLER_MIN_CYCLE_COUNT {
+                        let chiller_new_state=  temp as f32 > setpoint + 0.5;
+                        if chiller_new_state != chiller_current_state {
+                            //If the desired chiler state has changed, apply it
+                            let mut r = DISPENSER_DRIVER.lock().await;
+                            let driver = r.as_mut().expect("Motor driver must be stored in mutex");
+                            debug!("Chiller state now set to {}", chiller_new_state);
+                            driver.set_chiller_on(chiller_new_state).await;
+                            chiller_current_state = chiller_new_state;
+                            //Set the board-mounted status LED to
+                            let led_level = if chiller_current_state {
+                                Level::High
+                            }
+                            else {
+                                Level::Low
+                            };
+                            led_pin.set_level(led_level);
+                        }      
+                        chiller_change_cycle_count = 0;
+                    }
+                    else {
+                        chiller_change_cycle_count +=1;
+                    }
+                    info!("Drinks chiller temperature: {}'C, target {}'C, chiller_on: {}", temp, setpoint, chiller_current_state);
                 }
-                info!("Drinks chiller temperature: {}'C, target {}'C, chiller_on: {}", temp, setpoint, chiller_current_state);
             },
             Err(_e) => {
                 error!("Steinhart-Hart temperature calculation error");
