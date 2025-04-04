@@ -3,12 +3,9 @@ use defmt::*;
 use embassy_rp::usb::Driver as UsbDriver;
 use embassy_time::{Duration, Timer};
 
-use crate::AppDriver;
 use postcard_rpc::server::{
-    impls::embassy_usb_v0_4::{dispatch_impl::WireTxImpl, EUsbWireTx},
-    Sender, WireTx,
-};
-type AppTx = WireTxImpl<ThreadModeRawMutex, AppDriver>;
+    impls::embassy_usb_v0_4::EUsbWireTx,
+    Sender};
 
 use embassy_rp::peripherals::USB;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;

@@ -6,7 +6,6 @@ use defmt::*;
 
 use embassy_executor::Spawner;
 
-use embassy_rp::gpio::Pin;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;

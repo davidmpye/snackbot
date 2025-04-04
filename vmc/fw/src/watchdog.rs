@@ -1,7 +1,7 @@
 use embassy_rp::watchdog::Watchdog;
 use embassy_rp::peripherals::WATCHDOG;
 use embassy_time::{Duration, Timer};
-use embassy_rp::gpio::{Output, Drive};
+use embassy_rp::gpio::Output;
 
 const WATCHDOG_TIMER_SECS:u64 = 2;
 const WATCHDOG_FEED_TIMER_MS:u64 = 250;
