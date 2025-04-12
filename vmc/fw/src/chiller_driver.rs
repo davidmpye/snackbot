@@ -22,13 +22,8 @@ const THERMISTOR_PULLUP_VAL_OHMS:u64 = 10000;
 const MIN_TEMP:f64 = -10.0;
 const MAX_TEMP:f64 = 40.0;
 
-//For a 2.2k thermistor (https://www.bapihvac.com/wp-content/uploads/2010/11/Thermistor_2.2K.pdf),
+//For a 3.3k thermistor (https://www.bapihvac.com/wp-content/uploads/2010/11/Thermistor_3.3K.pdf),
 //calculated using https://rusefi.com/Steinhart-Hart.html
-//const THERMISTOR_A_VAL:f64 = 1.4726620300667711e-3;
-//const THERMISTOR_B_VAL:f64 = 2.3739290559817496e-4;
-//const THERMISTOR_C_VAL:f64 = 1.060205944258554e-7;
-
-//3.3k:
 const THERMISTOR_A_VAL:f64 = 1.3811057615602958e-3;
 const THERMISTOR_B_VAL:f64 = 2.370102475713365e-4;
 const THERMISTOR_C_VAL:f64 = 9.879312896211082e-8;
@@ -62,9 +57,7 @@ pub async fn chiller_task(
                 if temp < MIN_TEMP  || temp > MAX_TEMP {
                     error!("Thermistor error - {}'C outside acceptable range of {} to {}, chiller disabled", temp, MIN_TEMP, MAX_TEMP);
                     //Disable chiller 
-                    let mut r = DISPENSER_DRIVER.lock().await;
-                    let driver = r.as_mut().expect("Motor driver must be stored in mutex");
-                    driver.set_chiller_on(false).await;
+                    set_chiller_state(false).await;
                     chiller_current_state = false;
                 }
                 else {
@@ -75,10 +68,7 @@ pub async fn chiller_task(
                         let chiller_new_state=  temp as f32 > setpoint + 0.5;
                         if chiller_new_state != chiller_current_state {
                             //If the desired chiler state has changed, apply it
-                            let mut r = DISPENSER_DRIVER.lock().await;
-                            let driver = r.as_mut().expect("Motor driver must be stored in mutex");
-                            debug!("Chiller state now set to {}", chiller_new_state);
-                            driver.set_chiller_on(chiller_new_state).await;
+                            set_chiller_state(chiller_new_state).await;
                             chiller_current_state = chiller_new_state;
                             //Set the board-mounted status LED to
                             let led_level = if chiller_current_state {
@@ -119,7 +109,7 @@ fn steinhart_temp_calc(
     // Calculate temperature in Kelvin using Steinhart-Hart equation:
     // 1/T = A + B*ln(R) + C*(ln(R))^3
     let ln_r = log(resistance);
-    let inverse_temperature = a + b * ln_r + c * pow(ln_r, 3.0);//ln_r.powi(3);
+    let inverse_temperature = a + b * ln_r + c * pow(ln_r, 3.0);
 
     if inverse_temperature == 0.0 {       
          return Err(());
@@ -129,4 +119,10 @@ fn steinhart_temp_calc(
     let temperature_celsius = temperature_kelvin - 273.15;
 
     Ok(temperature_celsius)
+}
+
+async fn set_chiller_state(state: bool) {
+    let mut r = DISPENSER_DRIVER.lock().await;
+    let driver: &mut crate::motor_driver::MotorDriver<'_> = r.as_mut().expect("Motor driver must be stored in mutex");
+    driver.set_chiller_on(state).await;
 }

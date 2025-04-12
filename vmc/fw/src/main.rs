@@ -43,6 +43,7 @@ use postcard_rpc::{
 use vmc_icd::*;
 
 mod coin_acceptor;
+mod cashless_device;
 mod motor_driver;
 mod usb_device_handler;
 mod chiller_driver;

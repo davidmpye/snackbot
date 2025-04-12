@@ -32,12 +32,12 @@ const IDLE_MESSAGE_L2: &str = "snackz kthx";
 
 const PAY_MESSAGE_L1: &str = "Please pay:";
 
-use glib::clone;
+const APP_TIMEOUT_SECONDS: u16 = 30;
+
+use glib::ControlFlow::Continue;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow, Box, Button, Image, Label, Stack};
-
-use std::path::Path;
 
 use async_channel::{Receiver, Sender};
 
@@ -86,6 +86,7 @@ enum Event {
     Keypress(char),
     EscrowPressed,
     CoinInserted(u16),
+    Timeout_Poll_Event,
 }
 
 enum AppState {
@@ -111,6 +112,8 @@ struct App {
     pub vmc_command_channel: Sender<VmcCommand>,
     pub event_channel_tx: Sender<Event>,
     pub event_channel_rx: Receiver<Event>,
+
+    pub seconds_since_last_event: u16,
 }
 
 impl App {
@@ -148,7 +151,7 @@ impl App {
         window.present();
 
 
-        lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
+        let _ = lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
 
         Self {
             state: AppState::Idle,
@@ -166,10 +169,36 @@ impl App {
             vmc_command_channel,
             event_channel_rx,
             event_channel_tx,
+
+            seconds_since_last_event: 0,
         }
     }
 
     pub fn handle_event(&mut self, event: Event) {
+
+        //Handle timeout events separately from main state machine
+        if matches!(event, Event::Timeout_Poll_Event) {
+            if !matches!(self.state, AppState::Idle) {
+                if self.seconds_since_last_event == APP_TIMEOUT_SECONDS {
+                    println!("Timeout - return to idle state");
+                    self.state = AppState::Idle;
+                    self.seconds_since_last_event = 0;
+                    self.update_ui();
+                }
+                else {
+                    self.seconds_since_last_event += 1;
+                }
+            }
+            println!("Timer is {}", self.seconds_since_last_event);
+            return;
+        } 
+        else {
+            println!("Timer reset");
+            //Another event occurred - reset timer
+            self.seconds_since_last_event = 0;
+        }
+
+        //Handle other events
         match self.state {
             AppState::Idle => {
                 //In idle, we are waiting for key press events to select an item
@@ -297,7 +326,7 @@ impl App {
         match self.state {
             AppState::Idle => {
                 
-                self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1),
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1),
                     String::from(IDLE_MESSAGE_L2)));
 
                 //In this state, we should be showing the select item widgetstack 'page'
@@ -322,7 +351,7 @@ impl App {
                     }
                 };
                 //Display idle message
-                self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
             }
             AppState::AwaitingConfirmation => {
                 match get_stock_item(DispenserAddress {
@@ -409,10 +438,10 @@ fn main() -> glib::ExitCode {
                     Ok(event) => {
                         match event {
                             VmcResponse::CoinInsertedEvent(coin) => {
-                                tx.send(Event::CoinInserted(coin.value)).await;
+                                let _ = tx.send(Event::CoinInserted(coin.value)).await;
                             },
                             VmcResponse::CoinAcceptorEvent(CoinAcceptorEvent::EscrowPressed) => {
-                                tx.send(Event::EscrowPressed).await;
+                                let _ = tx.send(Event::EscrowPressed).await;
                             }
                             _ => {
                                 println!("Ignored an event");
@@ -426,8 +455,12 @@ fn main() -> glib::ExitCode {
             }
 
         });
-        //Spawn the VMC listener loop onto the main glib event loop
-        //glib::MainC
+
+        let ch = event_channel_tx.clone();
+        glib::timeout_add_seconds(1, move || {
+            let _ = ch.send_blocking(Event::Timeout_Poll_Event);
+            glib::ControlFlow::Continue
+        });
 
     });
 
