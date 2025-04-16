@@ -2,6 +2,7 @@
 #![no_main]
 
 use {defmt_rtt as _, panic_probe as _};
+use cashless_device::cashless_device_task;
 use defmt::*;
 
 use embassy_executor::Spawner;
@@ -228,6 +229,10 @@ async fn main(spawner: Spawner) {
     //Spawn the coin acceptor poll task
     debug!("Spawning coin acceptor poll task");
     spawner.must_spawn(coin_acceptor_task(server.sender().clone()));
+
+    //Spawn the casheless device poll task
+    debug!("Spawning cashless device poll task");
+    spawner.must_spawn(cashless_device_task(server.sender().clone()));
 
     debug!("Entering Postcard-RPC main loop");
     //Postcard server mainloop runs here
