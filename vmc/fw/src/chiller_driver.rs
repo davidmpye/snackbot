@@ -9,7 +9,7 @@ use libm::{log, pow};
 
 use crate::DISPENSER_DRIVER;
 
-const DEFAULT_TEMPERATURE_SETPOINT:f32 = 8.0;
+const DEFAULT_TEMPERATURE_SETPOINT:f32 = 6.0;
 
 const NUM_MEASUREMENTS_TO_AVERAGE:usize = 10;
 const MEASUREMENT_DELAY:Duration = Duration::from_millis(10);
