@@ -28563,7 +28563,7 @@
 		)
 	)
 	(gr_text "Motor Driver"
-		(at 37.195481 96.5 0)
+		(at 37.42 95.51 0)
 		(layer "F.SilkS")
 		(uuid "b9a59900-246f-45d4-bc53-fb633cfba01c")
 		(effects
