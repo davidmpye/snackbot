@@ -90,6 +90,7 @@ enum Event {
     EscrowPressed,
     CoinInserted(u16),
     Timeout_Poll_Event,
+    ChangeState(AppState),
 }
 
 enum AppState {
@@ -187,25 +188,31 @@ impl App {
     pub fn handle_event(&mut self, event: Event) {
 
         //Handle timeout events separately from main state machine
-        if matches!(event, Event::Timeout_Poll_Event) {
-            if !matches!(self.state, AppState::Idle) {
-                if self.seconds_since_last_event == APP_TIMEOUT_SECONDS {
-                    println!("Timeout - return to idle state");
-                    self.state = AppState::Idle;
-                    self.seconds_since_last_event = 0;
-                    self.update_ui();
+        match event {
+            Event::Timeout_Poll_Event => {
+                if !matches!(self.state, AppState::Idle) {
+                    if self.seconds_since_last_event == APP_TIMEOUT_SECONDS {
+                        println!("Timeout - return to idle state");
+                        self.state = AppState::Idle;
+                        self.seconds_since_last_event = 0;
+                        self.update_ui();
+                    }
+                    else {
+                        self.seconds_since_last_event += 1;
+                    }
                 }
-                else {
-                    self.seconds_since_last_event += 1;
-                }
+                return;
             }
-            return;
-        } 
-        else {
-            //Another event occurred - reset timer
-            self.seconds_since_last_event = 0;
+            Event::ChangeState(state) => {
+                self.state = state;
+                self.update_ui();
+                return;
+            }
+            _ => {
+                //Another event occurred - reset timer
+                self.seconds_since_last_event = 0;
+            }
         }
-
         //Handle other events
         match self.state {
             AppState::Idle => {
@@ -408,9 +415,10 @@ impl App {
                         .expect("Error: Make another selection box is missing from stack!"),
                 );
 
+                //Queue a message to leave this state after 3 seconds
                 let ch = self.event_channel_tx.clone();
-                glib::timeout_add_seconds(4, move || {
-                    let _ = ch.send_blocking(Event::Timeout_Poll_Event);
+                glib::timeout_add_seconds(2, move || {
+                    let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
                     glib::ControlFlow::Break
                 });
             }
