@@ -8,6 +8,9 @@ use crate::confirm_item_box::ConfirmItemBox;
 mod make_payment_box;
 use crate::make_payment_box::MakePaymentBox;
 
+mod make_another_selection_box;
+use crate::make_another_selection_box::MakeAnotherSelectionBox;
+
 mod lcd_driver;
 use gtk4::builders::ImageBuilder;
 use lcd_driver::{LcdCommand, LcdDriver};
@@ -91,9 +94,11 @@ enum Event {
 
 enum AppState {
     Idle,
+    MakeAnotherSelection,
     AwaitingConfirmation,
     AwaitingPayment,
     Vending,
+
 }
 
 struct App {
@@ -107,6 +112,7 @@ struct App {
     pub make_selection_box: MakeSelectionBox,
     pub confirm_item_box: ConfirmItemBox,
     pub make_payment_box: MakePaymentBox,
+    pub make_another_selection_box: MakeAnotherSelectionBox,
 
     pub lcd_channel: Sender<LcdCommand>,
     pub vmc_command_channel: Sender<VmcCommand>,
@@ -136,6 +142,9 @@ impl App {
         let make_payment_box = MakePaymentBox::new();
         stack.add_named(&make_payment_box, Some("make_payment_box"));
 
+        let make_another_selection_box = MakeAnotherSelectionBox::new();
+        stack.add_named(&make_another_selection_box, Some("make_another_selection_box"));
+
         //  let _ = stack.add_named(&confirm_item_box, Some("confirm_item_box"));
 
         let window = ApplicationWindow::builder()
@@ -164,6 +173,7 @@ impl App {
             make_selection_box,
             confirm_item_box,
             make_payment_box,
+            make_another_selection_box,
 
             lcd_channel,
             vmc_command_channel,
@@ -189,11 +199,9 @@ impl App {
                     self.seconds_since_last_event += 1;
                 }
             }
-            println!("Timer is {}", self.seconds_since_last_event);
             return;
         } 
         else {
-            println!("Timer reset");
             //Another event occurred - reset timer
             self.seconds_since_last_event = 0;
         }
@@ -373,7 +381,7 @@ impl App {
                         //Invalid, should say so.
                         self.row_selected = None;
                         self.col_selected = None;
-                        self.state = AppState::Idle;
+                        self.state = AppState::MakeAnotherSelection;
                         self.update_ui();
                     }
                 }
@@ -391,6 +399,20 @@ impl App {
                         .child_by_name("make_payment_box")
                         .expect("Error: Make payment box is missing from stack!"),
                 );
+            }
+            AppState::MakeAnotherSelection => {
+                self.stack.set_visible_child(
+                    &self
+                        .stack
+                        .child_by_name("make_another_selection_box")
+                        .expect("Error: Make another selection box is missing from stack!"),
+                );
+
+                let ch = self.event_channel_tx.clone();
+                glib::timeout_add_seconds(4, move || {
+                    let _ = ch.send_blocking(Event::Timeout_Poll_Event);
+                    glib::ControlFlow::Break
+                });
             }
             _ => {}
         }
