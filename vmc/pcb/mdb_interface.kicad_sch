@@ -5099,7 +5099,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "5R"
+		(property "Value" "5R1"
 			(at 86.36 34.2899 0)
 			(effects
 				(font
