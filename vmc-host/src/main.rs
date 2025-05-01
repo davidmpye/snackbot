@@ -297,6 +297,7 @@ impl App {
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
                             },
                             '\n' => {
+                                //FIXME REMOVE THIS BEFORE PRODUCTION!
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
                             },
                             _=> {},
@@ -317,7 +318,13 @@ impl App {
                     Event::CoinInserted(value) => {
                         //Update the credit
                         self.credit += value;
+                        if self.credit >= self.amount_due {
+                            //Move to vend
+                            self.state = AppState::Vending;
+                            let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
+                        }
                     }
+                    //Card payment event here...-
                     _ => {
                         println!("Other event - not handled");
                     }
@@ -460,6 +467,7 @@ fn main() -> glib::ExitCode {
             app.main_loop().await;
         });
         
+        //Spawn a task to receive events from the VMC response channel, and repost them onto the app's main event loop
         let rx = vmc_response_channel_rx.clone();
         let tx = event_channel_tx.clone();
         glib::MainContext::default().spawn_local( async move {
