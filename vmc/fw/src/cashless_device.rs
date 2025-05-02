@@ -99,9 +99,14 @@ pub async fn cashless_device_task (
                         //Channel not open, etc.
                     }
                 }
-
-                //NB Need to do a token poll here, or the device will reinit itself thinking we've died
+                
+                {
+                    let mut b = MDB_DRIVER.lock().await;
+                    let bus = b.as_mut().expect("MDB driver not present");
+                    cashless.poll_heartbeat(bus).await;
+                }
                 Timer::after(CASHLESS_DEVICE_POLL_INTERVAL).await;
+
             }
             None => {
                 info!("Cashless device not found");
