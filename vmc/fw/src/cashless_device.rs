@@ -15,16 +15,10 @@ use mdb_async::cashless_device::CashlessDevice;
 use vmc_icd::dispenser::DispenserAddress;
 use vmc_icd::EventTopic;
 
-use vmc_icd::CoinInsertedTopic;
-
-use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
-
 use postcard_rpc::header::VarHeader;
 
 use crate::MDB_DRIVER;
 use crate::Context;
-
-
 
 const CASHLESS_DEVICE_INIT_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 const CASHLESS_DEVICE_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -32,17 +26,16 @@ const CASHLESS_DEVICE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 static TASK_COMMAND_CHANNEL: Channel<ThreadModeRawMutex, CashlessDeviceCommand, 2> =
     Channel::new();
 
-
 pub enum CashlessDeviceCommand {
     StartTransaction(u16, DispenserAddress),
     CancelTransaction,
     EnableDevice,
     DisableDevice,
     EndSession,
-    VendSuccess,
+    VendSuccess(DispenserAddress),
     VendFailed,
+    RecordCashTransaction(u16, DispenserAddress),
 }
-
 
 //Task will:
 //Init the cashless device, or keep retrying every ten seconds
@@ -66,24 +59,49 @@ pub async fn cashless_device_task (
 
         match a {
             Some(mut cashless) => 'poll_loop: loop {
-                let events = {
-                    let mut b = MDB_DRIVER.lock().await;
-                    let bus = b.as_mut().expect("MDB driver not present");
-                   // cashless.poll(bus).await
-                };    /*            
+                //Handle any incoming commands from the VMC
+                match TASK_COMMAND_CHANNEL.try_receive() {
+                    Ok(msg) => {
+                        let mut b = MDB_DRIVER.lock().await;
+                        let bus = b.as_mut().expect("MDB driver not present");
+                        match msg {
+                            CashlessDeviceCommand::StartTransaction(amount, address) => {
+                                debug!("Received Contactless StartTransaction");
+                                cashless.start_transaction(bus, amount, [address.row as u8, address.col as u8]).await;
+                            },
+                            CashlessDeviceCommand::CancelTransaction => {
+                                debug!("Received Contactless CancelTransaction");
+                                cashless.cancel_transaction(bus).await;
+                            },
+                            CashlessDeviceCommand::VendSuccess(address) => {
+                                debug!("Received Contactless VendSuccess");
+                                cashless.vend_success(bus, [address.row as u8, address.col as u8]).await;
+                            },
+                            CashlessDeviceCommand::VendFailed => {
+                                debug!("Received Contactless VendFailed");
+                                cashless.vend_failed(bus).await;
 
-                match events {
-                    Ok(events) => {
-                 //       coinacceptor_process_poll_events(events, &postcard_sender).await;
-                    }
-                    Err(()) => {
-                        error!("Cashless device failed to reply to poll - will try to reinitialise");
-                        break 'poll_loop;
+                            },
+                            CashlessDeviceCommand::EndSession => {
+                                debug!("Received Contactless EndSession");
+                                cashless.end_session(bus).await;
+                            },
+                            CashlessDeviceCommand::RecordCashTransaction(amount, address) => {
+                                debug!("Received Contactless RecordCashTransaction");
+                                cashless.record_cash_transaction(bus, amount, [address.row as u8, address.col as u8]).await;
+                            },
+                            _ => {
+                                debug!("Unimplemented Contactless command");
+                            }
+                        }
+                    },
+                    Err(_e) => {
+                        //Channel not open, etc.
                     }
                 }
-                 */
-                Timer::after(CASHLESS_DEVICE_POLL_INTERVAL).await;
 
+                //NB Need to do a token poll here, or the device will reinit itself thinking we've died
+                Timer::after(CASHLESS_DEVICE_POLL_INTERVAL).await;
             }
             None => {
                 info!("Cashless device not found");

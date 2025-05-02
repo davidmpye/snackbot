@@ -230,7 +230,7 @@ async fn main(spawner: Spawner) {
     debug!("Spawning coin acceptor poll task");
     spawner.must_spawn(coin_acceptor_task(server.sender().clone()));
 
-    //Spawn the casheless device poll task
+    //Spawn the cashless device poll task
     debug!("Spawning cashless device poll task");
     spawner.must_spawn(cashless_device_task(server.sender().clone()));
 

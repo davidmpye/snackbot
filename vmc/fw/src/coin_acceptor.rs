@@ -16,7 +16,7 @@ use vmc_icd::EventTopic;
 
 use vmc_icd::CoinInsertedTopic;
 
-use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
+use vmc_icd::coin_acceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
 
 use postcard_rpc::header::VarHeader;
 

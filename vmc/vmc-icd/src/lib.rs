@@ -4,11 +4,16 @@ use postcard_rpc::{endpoints, topics, TopicDirection};
 pub mod dispenser;
 use crate::dispenser::*;
 
-pub mod coinacceptor;
-use crate::coinacceptor::*;
+pub mod coin_acceptor;
+use crate::coin_acceptor::*;
+
+pub mod cashless_device;
+use crate::cashless_device::*;
 
 pub mod chiller;
 use crate::chiller::*;
+
+
 
 endpoints! {
     list = ENDPOINT_LIST;
@@ -25,6 +30,8 @@ endpoints! {
 
  //   | CoinAcceptorInfoEndpoint   | ()            | CoinAcceptor         | "/mdb/coinacceptor/info"   | //Returns coinacceptor
     | CoinAcceptorEnableEndpoint | bool          | ()                   | "/mdb/coinacceptor/enable" | //Whether acceptor should accept coins
+
+  //  | CashlessDeviceCommand     | CashlessDeviceCommand | bool             | "/mdb/contactless/command" |
 
 }
 
