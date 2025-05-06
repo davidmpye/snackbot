@@ -99,6 +99,7 @@ pub async fn cashless_device_cmd_handler (
             Some(device) => {
                 let result = match c {
                     StartTransaction(unscaled_amount, d) => {
+                        debug!("Start contactless transaction, amount {}, addr {}{}", unscaled_amount, d.row, d.col);
                         device.start_transaction(bus, unscaled_amount, [d.row as u8, d.col as u8]).await
                     },
                     CancelTransaction=> {
