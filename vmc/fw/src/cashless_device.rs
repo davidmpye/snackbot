@@ -66,7 +66,6 @@ pub async fn cashless_device_poll_task (
 
                         match r.as_mut()  {
                             Some(device) => {
-                                debug!("Polling cashless device");
                                 device.poll_heartbeat(bus).await;
                             },
                             None => {
@@ -101,6 +100,7 @@ pub async fn cashless_device_cmd_handler (
                     StartTransaction(unscaled_amount, d) => {
                         debug!("Start contactless transaction, amount {}, addr {}{}", unscaled_amount, d.row, d.col);
                         device.start_transaction(bus, unscaled_amount, [d.row as u8, d.col as u8]).await
+
                     },
                     CancelTransaction=> {
                         device.cancel_transaction(bus).await
