@@ -13,7 +13,10 @@ pub enum CashlessDeviceCommand {
     EnableDevice,
     DisableDevice,
     EndSession,
-    VendSuccess,
+    VendSuccess(DispenserAddress),
     VendFailed,
+    RecordCashTransaction(u16, DispenserAddress),
 }
+
+pub type CashlessResult = Result<(), ()>;
 

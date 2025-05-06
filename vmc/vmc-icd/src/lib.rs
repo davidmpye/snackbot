@@ -31,7 +31,8 @@ endpoints! {
  //   | CoinAcceptorInfoEndpoint   | ()            | CoinAcceptor         | "/mdb/coinacceptor/info"   | //Returns coinacceptor
     | CoinAcceptorEnableEndpoint | bool          | ()                   | "/mdb/coinacceptor/enable" | //Whether acceptor should accept coins
 
-  //  | CashlessDeviceCommand     | CashlessDeviceCommand | bool             | "/mdb/contactless/command" |
+    
+    | CashlessDeviceCmdEndpoint  | CashlessDeviceCommand | CashlessResult    | "/mdb/cashlessdevice/cmd"  | //Commands to the cashless device
 
 }
 

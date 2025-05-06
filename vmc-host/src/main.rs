@@ -21,7 +21,7 @@ use vmc_driver::{VmcCommand, VmcDriver, VmcResponse};
 mod rpc_shim;
 use rpc_shim::{spawn_lcd_driver, spawn_vmc_driver};
 
-use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
+use vmc_icd::coin_acceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
 use vmc_icd::dispenser::{Dispenser, DispenserAddress};
 use vmc_icd::EventTopic;
 
@@ -160,7 +160,6 @@ impl App {
 
         window.present();
 
-
         let _ = lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
 
         Self {
@@ -269,14 +268,24 @@ impl App {
                                     }
                                 }
                                 //Enable coin acceptor
-                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(true));
+                                //let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(true));
+
+                                //Set amount for card reader
+                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(
+                                    vmc_icd::cashless_device::CashlessDeviceCommand::StartTransaction(
+                                        self.amount_due, 
+                                        DispenserAddress {
+                                            row: self.row_selected.unwrap(),
+                                            col : self.col_selected.unwrap()
+                                        }
+                                    )
+                                ));
                             }
                             '\x1b' => {
                                 //Cancel
                                 self.row_selected = None;
                                 self.col_selected = None;
-                                self.state = AppState::Idle;
-                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
+                                self.state = AppState::Idle;                   
                             }
                             _ => {}
                         }
@@ -295,10 +304,15 @@ impl App {
                                 self.state = AppState::Idle;
                                 //Disable coin acceptor
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
+
+                                //Cancel card reader transaction
+                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(
+                                    vmc_icd::cashless_device::CashlessDeviceCommand::CancelTransaction));            
+
                             },
                             '\n' => {
                                 //FIXME REMOVE THIS BEFORE PRODUCTION!
-                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
+                               // let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
                             },
                             _=> {},
                         }

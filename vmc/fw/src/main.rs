@@ -2,7 +2,6 @@
 #![no_main]
 
 use {defmt_rtt as _, panic_probe as _};
-use cashless_device::cashless_device_task;
 use defmt::*;
 
 use embassy_executor::Spawner;
@@ -51,7 +50,7 @@ mod chiller_driver;
 mod watchdog;
 
 use coin_acceptor::{coin_acceptor_task, set_coin_acceptor_enabled};
-
+use cashless_device::{cashless_device_poll_task, cashless_device_cmd_handler};
 use motor_driver::{MotorDriver, motor_driver_dispense_task, motor_driver_dispenser_status};
 
 use usb_device_handler::usb_task;
@@ -103,6 +102,8 @@ define_dispatch! {
 
         | CoinAcceptorEnableEndpoint| async       | set_coin_acceptor_enabled     |
       //  | CoinAcceptorInfoEndpoint  | async       | coin_acceptor_info            |
+
+        | CashlessDeviceCmdEndpoint | async         |   cashless_device_cmd_handler       | 
     };
     
     topics_in: {    
@@ -232,7 +233,7 @@ async fn main(spawner: Spawner) {
 
     //Spawn the cashless device poll task
     debug!("Spawning cashless device poll task");
-    spawner.must_spawn(cashless_device_task(server.sender().clone()));
+    spawner.must_spawn(cashless_device_poll_task(server.sender().clone()));
 
     debug!("Entering Postcard-RPC main loop");
     //Postcard server mainloop runs here

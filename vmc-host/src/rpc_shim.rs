@@ -82,6 +82,10 @@ pub(crate) fn spawn_vmc_driver(vmc_response_channel_tx:Sender<VmcResponse>, vmc_
                                 VmcCommand::SetCoinAcceptorEnabled(enable) => {
                                     let _ = vmc.set_coinacceptor_enabled(enable).await;
                                 },  
+                                VmcCommand::CashlessCmd(cmd) => {
+                                    println!("Sending cashless command");
+                                    let _ = vmc.send_cashless_device_command(cmd).await;
+                                }
                                  _ => {},
                             }
                         }   
