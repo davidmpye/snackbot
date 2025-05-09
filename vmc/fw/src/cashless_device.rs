@@ -10,16 +10,10 @@ use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::Channel;
 use mdb_async::cashless_device::{CashlessDevice, PollEvent};
 
-use vmc_icd::cashless_device::CashlessDeviceCommand::*;
-use vmc_icd::dispenser::DispenserAddress;
-use vmc_icd::EventTopic;
-
-use vmc_icd::cashless_device::*;
+use vmc_icd::cashless_device::{CashlessDeviceCommand, CashlessDeviceEvent};
+use vmc_icd::CashlessEvent;
 
 use postcard_rpc::header::VarHeader;
-
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
 
 use crate::Context;
 use crate::MDB_DRIVER;
@@ -27,30 +21,17 @@ use crate::MDB_DRIVER;
 const CASHLESS_DEVICE_INIT_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 const CASHLESS_DEVICE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-pub enum CashlessCommand {
-    Reset,
-    Enable,
-    Disable,
-    RecordCashTransaction(u16, DispenserAddress),
-    StartTransaction(u16, DispenserAddress),
-    CancelTransaction,
-    VendSuccess(DispenserAddress),
-    VendFailed,
-}
-
-static CASHLESS_COMMAND_CHANNEL: Channel<ThreadModeRawMutex, CashlessCommand, 2> = Channel::new();
-static CASHLESS_RESPONSE_CHANNEL: Channel<
-    ThreadModeRawMutex,
-    mdb_async::cashless_device::PollEvent,
-    32,
-> = Channel::new();
+static CASHLESS_COMMAND_CHANNEL: Channel<ThreadModeRawMutex, CashlessDeviceCommand, 2> =
+    Channel::new();
 
 //Task will:
 //Init the cashless device, or keep retrying every ten seconds
 //Poll the cashless device every 100mS
 //If it fails to repond to a poll, it will get reinitialised
 #[embassy_executor::task]
-pub async fn cashless_device_task() -> ! {
+pub async fn cashless_device_task(
+    postcard_sender: Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>,
+) -> ! {
     loop {
         //Try to initialise the device
         let d = {
@@ -62,7 +43,7 @@ pub async fn cashless_device_task() -> ! {
         match d {
             Some(device) => {
                 info!("Initialised cashless device");
-                'main : loop {
+                'main: loop {
                     //This is the main device poll loop
                     let poll_events = {
                         //Unlock the bus, do the poll
@@ -70,27 +51,64 @@ pub async fn cashless_device_task() -> ! {
                         let bus = b.as_mut().expect("MDB driver not present");
                         device.poll(bus).await
                     };
-                    //Collect poll events and send them over the response channel to the handler function
+                    //Collect poll events and send summary ones to postcard-rpc
                     for event in poll_events {
+                        let mut seq = 0x00u16;
                         if let Some(e) = event {
-                            debug!("Processing poll event {}", e);
-                            //Send this event down the command channel
-                            CASHLESS_RESPONSE_CHANNEL.send(e).await;
+                            match e {
+                                PollEvent::VendApproved(amount) => {
+                                    let _ = postcard_sender
+                                        .publish::<CashlessEvent>(
+                                            seq.into(),
+                                            &CashlessDeviceEvent::VendApproved(amount),
+                                        )
+                                        .await;
+                                }
+                                PollEvent::VendDenied => {
+                                    let _ = postcard_sender
+                                        .publish::<CashlessEvent>(
+                                            seq.into(),
+                                            &CashlessDeviceEvent::VendDenied,
+                                        )
+                                        .await;
+
+                                    //End session
+                                    let mut b = MDB_DRIVER.lock().await;
+                                    let bus = b.as_mut().expect("MDB driver not present");
+                                    device.end_session(bus).await;
+                                }
+                                PollEvent::Malfunction(code) => {
+                                    error!("Received cashless device malfunction");
+                                }
+                                PollEvent::SessionCancelRequest | PollEvent::Cancelled => {
+                                    let mut b = MDB_DRIVER.lock().await;
+                                    let bus = b.as_mut().expect("MDB driver not present");
+                                    device.end_session(bus).await;
+                                }
+                                PollEvent::CmdOutOfSequence => {
+                                    error!("Cmd out of sequence, reinitialising device");
+                                    break 'main;
+                                }
+                                _ => {
+                                    debug!("Received poll event {}", e)
+                                }
+                            }
+                            seq += 1;
                         }
                     }
                     //Handle any pending commands
                     while let Ok(cmd) = CASHLESS_COMMAND_CHANNEL.try_receive() {
                         let mut b = MDB_DRIVER.lock().await;
                         let bus = b.as_mut().expect("MDB driver not present");
-                        debug!("Processing command {}",cmd);
+                        debug!("Processing command {}", cmd);
                         match cmd {
-                            CashlessCommand::Enable => {
+                            CashlessDeviceCommand::Enable => {
                                 device.set_device_enabled(bus, true).await;
                             }
-                            CashlessCommand::Disable => {
+                            CashlessDeviceCommand::Disable => {
                                 device.set_device_enabled(bus, false).await;
                             }
-                            CashlessCommand::RecordCashTransaction(amount, address) => {
+                            CashlessDeviceCommand::RecordCashTransaction(amount, address) => {
                                 device
                                     .record_cash_transaction(
                                         bus,
@@ -99,19 +117,27 @@ pub async fn cashless_device_task() -> ! {
                                     )
                                     .await;
                             }
-                            CashlessCommand::StartTransaction(amount, address) => {
-                                device.start_transaction(bus, amount,[address.row as u8, address.col as u8]).await;
+                            CashlessDeviceCommand::StartTransaction(amount, address) => {
+                                device
+                                    .start_transaction(
+                                        bus,
+                                        amount,
+                                        [address.row as u8, address.col as u8],
+                                    )
+                                    .await;
                             }
-                            CashlessCommand::CancelTransaction => {
+                            CashlessDeviceCommand::CancelTransaction => {
                                 device.cancel_transaction(bus).await;
                             }
-                            CashlessCommand::VendSuccess(address) => {
-                                device.vend_success(bus, [address.row as u8, address.col as u8]).await;
-                            },
-                            CashlessCommand::VendFailed => {
+                            CashlessDeviceCommand::VendSuccess(address) => {
+                                device
+                                    .vend_success(bus, [address.row as u8, address.col as u8])
+                                    .await;
+                            }
+                            CashlessDeviceCommand::VendFailed => {
                                 device.vend_failed(bus).await;
-                            },
-                            CashlessCommand::Reset => {
+                            }
+                            CashlessDeviceCommand::Reset => {
                                 //Break the main loop, and we will end up reinitialising the device.
                                 break 'main;
                             }
@@ -127,4 +153,13 @@ pub async fn cashless_device_task() -> ! {
             }
         }
     }
+}
+
+pub async fn cashless_device_cmd_handler(
+    _context: &mut Context,
+    //Send the command down the channel
+    _header: VarHeader,
+    cmd: CashlessDeviceCommand,
+) {
+    CASHLESS_COMMAND_CHANNEL.send(cmd).await;
 }

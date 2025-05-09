@@ -24,16 +24,9 @@ endpoints! {
     | DispenseEndpoint        | DispenseCommand  | DispenseResult       | "/dispenser/dispense"    |  //Dispenses or force-dispenses an item
     | DispenserStatusEndpoint | DispenserAddress | DispenserOption      | "/dispenser/status"      |  //Get the status for a given dispenser
 
-    //Control the chiller
- //   | SetChillerTemp          | u8               | bool                 | "/chiller/settemp" |  //Set the target temperature for the chiller (fixed point - eg 255 = 25.5'C)
- //   | GetChillerInfo          | ()               | ChillerInfo          | "/chiller/status"    |  //Get the chiller info
-
- //   | CoinAcceptorInfoEndpoint   | ()            | CoinAcceptor         | "/mdb/coinacceptor/info"   | //Returns coinacceptor
     | CoinAcceptorEnableEndpoint | bool          | ()                   | "/mdb/coinacceptor/enable" | //Whether acceptor should accept coins
 
-    
-    | CashlessDeviceCmdEndpoint  | CashlessDeviceCommand | CashlessResult    | "/mdb/cashlessdevice/cmd"  | //Commands to the cashless device
-
+    | CashlessDeviceCmdEndpoint  | CashlessDeviceCommand | ()    | "/mdb/cashlessdevice/cmd"  | //Commands to the cashless device
 }
 
 topics! {
@@ -50,4 +43,6 @@ topics! {
     | -------                   | ---------             | ----                             | ---                           |
     | CoinInsertedTopic         | CoinInserted          | "/mdb/coinacceptor/coininserted" |                               |
     | EventTopic                | CoinAcceptorEvent     | "/mdb/coinacceptor/event"        |                               |
+    //An event from the cashless device
+    | CashlessEvent             | CashlessDeviceEvent   | "/mdb/cashless/event"            |                               |
 }

@@ -8,14 +8,22 @@ use crate::DispenserAddress;
 
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq, Copy, Clone)]
 pub enum CashlessDeviceCommand {
+    Reset,
+    Enable,
+    Disable,
+    RecordCashTransaction(u16, DispenserAddress),
     StartTransaction(u16, DispenserAddress),
     CancelTransaction,
-    EnableDevice,
-    DisableDevice,
-    EndSession,
     VendSuccess(DispenserAddress),
     VendFailed,
-    RecordCashTransaction(u16, DispenserAddress),
+}
+
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq, Copy, Clone)]
+pub enum CashlessDeviceEvent {
+    Available,
+    Unavailable,
+    VendApproved(u16),
+    VendDenied,
 }
 
 pub type CashlessResult = Result<(), ()>;
