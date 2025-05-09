@@ -11,6 +11,8 @@ use crate::{VmcDriver, VmcCommand, VmcResponse};
 use crate::{LcdDriver, LcdCommand};
 use crate::DispenserAddress;
 
+use vmc_icd::CashlessEventTopic;
+
 //Spawn a tokio runtime instance for the postcard-rpc device handlers
 fn runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -42,54 +44,70 @@ pub(crate) fn spawn_vmc_driver(vmc_response_channel_tx:Sender<VmcResponse>, vmc_
         #[strong]
         vmc_command_channel_rx,
         async move {
-            let mut vmc = get_vmc_driver().await;
-            //Await a message
-            let mut event_topic = vmc.driver.subscribe_multi::<EventTopic>(8).await.unwrap();
-            let mut coin_inserted_topic = vmc.driver.subscribe_multi::<vmc_icd::CoinInsertedTopic>(8).await.unwrap();
-            loop {
-                tokio::select! {
-                    val = event_topic.recv()  => {
-                        if let Ok(event) = val {
-                            let _ = vmc_response_channel_tx.send(VmcResponse::CoinAcceptorEvent(event)).await;
-                        }
-                        else {
-                            println!("Error receiving coinacceptor event");
-                        }
-                    }
-                    val = coin_inserted_topic.recv() => {
-                        if let Ok(coin) = val {
-                            let _ = vmc_response_channel_tx.send(VmcResponse::CoinInsertedEvent(coin)).await;
-                        }
-                        else {
-                            println!("Error receiving coininserted event")
-                        }
-                    }
-                    val = vmc_command_channel_rx.recv() => {
-                        if let Ok(cmd) = val {
-                            match cmd {
-                                VmcCommand::VendItem(row, col) => {
-                                    println!("Vend command received - {}{}",row,col);
-                                    match vmc.dispense(DispenserAddress {row, col}).await {
-                                        Ok(()) => {
-                                            println!("Vend success");
-                                            //return result
-                                        },
-                                        Err(e) => {
-                                            println!("Error - failed to vend");
-                                        },
-                                    }
-                                },
-                                VmcCommand::SetCoinAcceptorEnabled(enable) => {
-                                    let _ = vmc.set_coinacceptor_enabled(enable).await;
-                                },  
-                                VmcCommand::CashlessCmd(cmd) => {
-                                    println!("Sending cashless command");
-                                    let _ = vmc.send_cashless_device_command(cmd).await;
-                                }
-                                 _ => {},
+
+            'outer: loop {
+                let mut vmc = get_vmc_driver().await;
+                //Await a message
+                let mut cashless_topic = vmc.driver.subscribe_multi::<CashlessEventTopic>(8).await.unwrap();
+                let mut event_topic = vmc.driver.subscribe_multi::<EventTopic>(8).await.unwrap();
+                let mut coin_inserted_topic = vmc.driver.subscribe_multi::<vmc_icd::CoinInsertedTopic>(8).await.unwrap();
+                'recvpoll: loop {
+                    tokio::select! {
+                        val = event_topic.recv()  => {
+                            if let Ok(event) = val {
+                                let _ = vmc_response_channel_tx.send(VmcResponse::CoinAcceptorEvent(event)).await;
                             }
-                        }   
-                    } 
+                            else {
+                                println!("Error receiving coinacceptor event");
+                                break 'recvpoll;
+                            }
+                        }
+                        val = coin_inserted_topic.recv() => {
+                            if let Ok(coin) = val {
+                                let _ = vmc_response_channel_tx.send(VmcResponse::CoinInsertedEvent(coin)).await;
+                            }
+                            else {
+                                println!("Error receiving coininserted event");
+                                break 'recvpoll;
+                            }
+                        }
+                        val = cashless_topic.recv() => {
+                            if let Ok(event) = val {
+                                let _ = vmc_response_channel_tx.send(VmcResponse::CashlessEvent(event)).await;
+                            }
+                        }
+                        val = vmc_command_channel_rx.recv() => {
+                            if let Ok(cmd) = val {
+                                match cmd {
+                                    VmcCommand::VendItem(row, col) => {
+                                        println!("Vend command received - {}{}",row,col);
+                                        match vmc.dispense(DispenserAddress {row, col}).await {
+                                            Ok(()) => {
+                                                println!("Vend success");
+                                                let _ = vmc_response_channel_tx.send(VmcResponse::DispenseSuccessEvent).await;
+                                            },
+                                            Err(e) => {
+                                                println!("Error - failed to vend");
+                                                let _ = vmc_response_channel_tx.send(VmcResponse::DispenseFailedEvent).await;
+                                            },
+                                        }
+                                    },
+                                    VmcCommand::SetCoinAcceptorEnabled(enable) => {
+                                        let _ = vmc.set_coinacceptor_enabled(enable).await;
+                                    },  
+                                    VmcCommand::CashlessCmd(cmd) => {
+                                        println!("Sending cashless command");
+                                        let _ = vmc.send_cashless_device_command(cmd).await;
+                                    }
+                                    _ => {},
+                                }
+                            }  
+                            else {
+                                println!("VMC comms err");
+                                break 'recvpoll;
+                            }
+                        } 
+                    }
                 }
             }
         }

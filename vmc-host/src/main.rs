@@ -24,6 +24,7 @@ use rpc_shim::{spawn_lcd_driver, spawn_vmc_driver};
 use vmc_icd::coin_acceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
 use vmc_icd::dispenser::{Dispenser, DispenserAddress};
 use vmc_icd::EventTopic;
+use vmc_icd::cashless_device::{CashlessDeviceCommand, CashlessDeviceEvent};
 
 const APP_ID: &str = "uk.org.makerspace.snackbot";
 
@@ -91,6 +92,9 @@ enum Event {
     CoinInserted(u16),
     Timeout_Poll_Event,
     ChangeState(AppState),
+    CashlessEvent(CashlessDeviceEvent),
+    VendSuccess,
+    VendFailed,
 }
 
 enum AppState {
@@ -99,7 +103,8 @@ enum AppState {
     AwaitingConfirmation,
     AwaitingPayment,
     Vending,
-
+    VendSuccess,
+    VendFailed,
 }
 
 struct App {
@@ -185,7 +190,6 @@ impl App {
     }
 
     pub fn handle_event(&mut self, event: Event) {
-
         //Handle timeout events separately from main state machine
         match event {
             Event::Timeout_Poll_Event => {
@@ -308,12 +312,8 @@ impl App {
                                 //Cancel card reader transaction
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(
                                     vmc_icd::cashless_device::CashlessDeviceCommand::CancelTransaction));            
+                            },
 
-                            },
-                            '\n' => {
-                                //FIXME REMOVE THIS BEFORE PRODUCTION!
-                               // let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
-                            },
                             _=> {},
                         }
                     },
@@ -327,8 +327,10 @@ impl App {
                          self.amount_due = 0;
                          //Disable coin acceptor
                          let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
+                         //Cancel the cashless transaction
+                         let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::CancelTransaction));
                          //Need to refund coins if any inserted
-                    },
+                    },/*
                     Event::CoinInserted(value) => {
                         //Update the credit
                         self.credit += value;
@@ -337,13 +339,42 @@ impl App {
                             self.state = AppState::Vending;
                             let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
                         }
-                    }
+                    }*/
+                    Event::CashlessEvent(e) => {
+                        match e {
+                            CashlessDeviceEvent::VendApproved(amount) => {
+                                if amount == self.amount_due {
+                                    let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
+                                    self.state = AppState::Vending;
+                                }
+                            }
+                            _ => {},
+                        }
+                    },
+
                     //Card payment event here...-
                     _ => {
                         println!("Other event - not handled");
                     }
                 }
             }
+            AppState::Vending => {
+                //Only two events acceptable here - success or failed.
+                match event {
+                    Event::VendSuccess => {
+                        //Send massage to cashless device to confirm vend successful, to end transaction
+                        let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::VendSuccess(DispenserAddress { row: self.row_selected.unwrap(), col: self.col_selected.unwrap() })));
+                        self.state = AppState::VendSuccess;              
+                    },
+                    Event::VendFailed => {
+                        //Cancel the cashless device transaction with vend failed (not sure what it will say if it didnt handle the transaction)
+                        let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::VendFailed));
+                        self.state = AppState::VendFailed;                   
+                    },
+                    _ => {},
+                }
+            }
+
             _ => {}
         }
         self.update_ui();
@@ -495,6 +526,15 @@ fn main() -> glib::ExitCode {
                             VmcResponse::CoinAcceptorEvent(CoinAcceptorEvent::EscrowPressed) => {
                                 let _ = tx.send(Event::EscrowPressed).await;
                             }
+                            VmcResponse::CashlessEvent(e) => {
+                                let _ = tx.send(Event::CashlessEvent(e)).await;
+                            }
+                            VmcResponse::DispenseSuccessEvent => {
+                                let _ = tx.send(Event::VendSuccess).await;
+                            }
+                            VmcResponse::DispenseFailedEvent => {
+                                let _ = tx.send(Event::VendFailed).await;
+                            }
                             _ => {
                                 println!("Ignored an event");
                             },
@@ -505,7 +545,6 @@ fn main() -> glib::ExitCode {
                     },
                 }
             }
-
         });
 
         let ch = event_channel_tx.clone();

@@ -22,7 +22,7 @@ impl<E> From<HostErr<WireError>> for VmcClientError<E> {
 
 use vmc_icd::coin_acceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting,};
 
-use vmc_icd::cashless_device::CashlessDeviceCommand::*;
+use vmc_icd::cashless_device::{CashlessDeviceCommand::*,CashlessDeviceEvent};
 
 #[derive (Copy, Clone)]
 pub enum VmcCommand {
@@ -40,7 +40,11 @@ pub enum VmcResponse {
     Dispenser(Dispenser),
     //Vend result for a vend request
     CoinAcceptorEvent(CoinAcceptorEvent),
-    CoinInsertedEvent(CoinInserted)
+    CoinInsertedEvent(CoinInserted),
+    CashlessEvent(CashlessDeviceEvent),
+
+    DispenseSuccessEvent,
+    DispenseFailedEvent,
 }
 
 pub struct VmcDriver {

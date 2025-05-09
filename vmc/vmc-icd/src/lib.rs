@@ -44,5 +44,5 @@ topics! {
     | CoinInsertedTopic         | CoinInserted          | "/mdb/coinacceptor/coininserted" |                               |
     | EventTopic                | CoinAcceptorEvent     | "/mdb/coinacceptor/event"        |                               |
     //An event from the cashless device
-    | CashlessEvent             | CashlessDeviceEvent   | "/mdb/cashless/event"            |                               |
+    | CashlessEventTopic        | CashlessDeviceEvent   | "/mdb/cashless/event"            |                               |
 }
