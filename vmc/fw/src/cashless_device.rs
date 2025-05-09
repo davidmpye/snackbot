@@ -28,6 +28,7 @@ const CASHLESS_DEVICE_INIT_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 const CASHLESS_DEVICE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 pub enum CashlessCommand {
+    Reset,
     Enable,
     Disable,
     RecordCashTransaction(u16, DispenserAddress),
@@ -110,6 +111,10 @@ pub async fn cashless_device_task() -> ! {
                             CashlessCommand::VendFailed => {
                                 device.vend_failed(bus).await;
                             },
+                            CashlessCommand::Reset => {
+                                //Break the main loop, and we will end up reinitialising the device.
+                                break 'main;
+                            }
                         }
                     }
                     Timer::after(CASHLESS_DEVICE_POLL_INTERVAL).await;
