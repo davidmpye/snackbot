@@ -495,11 +495,11 @@ impl App {
                 });
             }
             AppState::Vending => {
-                 &self.stack.set_visible_child(
+                 self.stack.set_visible_child(
                     &self.stack.child_by_name("vend_in_progress_box").expect("vend_in_progress_box missing from stack"));
             }
             AppState::VendSuccess => {
-                &self.stack.set_visible_child(
+                self.stack.set_visible_child(
                     &self.stack.child_by_name("vend_ok_box").expect("Vendsuccess missing from stack"));
                 //Queue a message to leave this state after 3 seconds
                 let ch = self.event_channel_tx.clone();
@@ -510,7 +510,7 @@ impl App {
             }
 
             AppState::VendFailed => {
-                &self.stack.set_visible_child(
+                self.stack.set_visible_child(
                     &self.stack.child_by_name("vend_failed_box").expect("Vendfailed missing from stack"));
                 //Queue a message to leave this state after 3 seconds
                 let ch = self.event_channel_tx.clone();
