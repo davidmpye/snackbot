@@ -377,8 +377,8 @@ impl App {
                     _ => {},
                 }
             }
-
             _ => {}
+            
         }
         self.update_ui();
     }

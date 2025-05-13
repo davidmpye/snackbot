@@ -142,10 +142,12 @@ pub async fn cashless_device_task(
                                 device
                                     .vend_success(bus, [address.row as u8, address.col as u8])
                                     .await;
+                                device.end_session(bus).await;
                             }
                             CashlessDeviceCommand::VendFailed => {
-                                debug!("Venf failed");
+                                debug!("Vend failed");
                                 device.vend_failed(bus).await;
+                                device.end_session(bus).await;
                             }
                             CashlessDeviceCommand::Reset => {
                                 debug!("Resetting cashless device");
