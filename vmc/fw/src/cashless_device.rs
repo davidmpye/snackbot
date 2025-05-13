@@ -38,7 +38,9 @@ pub async fn cashless_device_task(
         let d = {
             let mut b = MDB_DRIVER.lock().await;
             let bus = b.as_mut().expect("MDB driver not present");
-            CashlessDevice::init(bus).await
+            let d = CashlessDevice::init(bus).await;
+            d.set_device_enabled(true);
+            d
         };
 
         match d {
