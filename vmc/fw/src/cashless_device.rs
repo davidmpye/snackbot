@@ -77,26 +77,33 @@ pub async fn cashless_device_task(
                                             &CashlessDeviceEvent::VendDenied,
                                         )
                                         .await;
-
                                     //End session
                                     let mut b = MDB_DRIVER.lock().await;
                                     let bus = b.as_mut().expect("MDB driver not present");
                                     device.end_session(bus).await;
                                 }
-                                PollEvent::Malfunction(code) => {
+                                PollEvent::Malfunction(_code) => {
                                     error!("Received cashless device malfunction");
                                 }
-                                PollEvent::SessionCancelRequest | PollEvent::Cancelled => {
+                                PollEvent::SessionCancelRequest => {
+                                    debug!("Session cancel request received");
+                                    let mut b = MDB_DRIVER.lock().await;
+                                    let bus = b.as_mut().expect("MDB driver not present");
+                                    device.cancel_transaction(bus).await;
+                                }
+                                PollEvent::Cancelled => {
+                                    debug!("Cancelled");
                                     let mut b = MDB_DRIVER.lock().await;
                                     let bus = b.as_mut().expect("MDB driver not present");
                                     device.end_session(bus).await;
                                 }
                                 PollEvent::CmdOutOfSequence => {
                                     error!("Cmd out of sequence, reinitialising device");
+                                    //Breaking the main loop will force a reinit
                                     break 'main;
                                 }
                                 PollEvent::EndSession => {
-                                    debug!("End session requested");
+                                    debug!("End session");
                                 }
                                 _ => {
                                     debug!("Received unhandled poll event");
