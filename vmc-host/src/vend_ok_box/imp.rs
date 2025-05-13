@@ -25,7 +25,7 @@ impl ObjectImpl for VendOkBox {
             &Label::builder()
                 .use_markup(true)
                 .justify(gtk4::Justification::Center)
-                .label("<span font=\"Arial Rounded MT 60\" color=\"red\">\n\nThank\nYou</span>")
+                .label("<span font=\"Arial Rounded MT 60\">\nThank\nYou</span>")
                 .build(),
         );
         self.reason.set_use_markup(true);

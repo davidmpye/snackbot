@@ -11,6 +11,13 @@ use crate::make_payment_box::MakePaymentBox;
 mod make_another_selection_box;
 use crate::make_another_selection_box::MakeAnotherSelectionBox;
 
+mod vend_in_progress_box;
+use vend_in_progress_box::VendInProgressBox;
+mod vend_ok_box;
+use vend_ok_box::VendOkBox;
+mod vend_failed_box;
+use vend_failed_box::VendFailedBox;
+
 mod lcd_driver;
 use gtk4::builders::ImageBuilder;
 use lcd_driver::{LcdCommand, LcdDriver};
@@ -150,6 +157,15 @@ impl App {
 
         let make_another_selection_box = MakeAnotherSelectionBox::new();
         stack.add_named(&make_another_selection_box, Some("make_another_selection_box"));
+
+
+        let vend_in_progress_box = VendInProgressBox::new();
+        let vend_ok_box = VendOkBox::new();
+        let vend_failed_box = VendFailedBox::new();
+
+        stack.add_named(&vend_in_progress_box, Some("vend_in_progress_box"));
+        stack.add_named(&vend_ok_box, Some("vend_ok_box"));
+        stack.add_named(&vend_failed_box, Some("vend_failed_box"));
 
         //  let _ = stack.add_named(&confirm_item_box, Some("confirm_item_box"));
 
@@ -374,6 +390,7 @@ impl App {
                         let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::VendFailed));
                         self.state = AppState::VendFailed;                   
                     },
+                    //Fixme - need a timeout if vmc has gone wrong
                     _ => {},
                 }
             }
@@ -476,6 +493,31 @@ impl App {
                     let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
                     glib::ControlFlow::Break
                 });
+            }
+            AppState::Vending => {
+                 &self.stack.set_visible_child(
+                    &self.stack.child_by_name("vend_in_progress_box").expect("vend_in_progress_box missing from stack"));
+            }
+            AppState::VendSuccess => {
+                &self.stack.set_visible_child(
+                    &self.stack.child_by_name("vend_ok_box").expect("Vendsuccess missing from stack"));
+                //Queue a message to leave this state after 3 seconds
+                let ch = self.event_channel_tx.clone();
+                glib::timeout_add_seconds(2, move || {
+                    let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
+                    glib::ControlFlow::Break
+                }); 
+            }
+
+            AppState::VendFailed => {
+                &self.stack.set_visible_child(
+                    &self.stack.child_by_name("vend_failed_box").expect("Vendfailed missing from stack"));
+                //Queue a message to leave this state after 3 seconds
+                let ch = self.event_channel_tx.clone();
+                glib::timeout_add_seconds(2, move || {
+                    let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
+                    glib::ControlFlow::Break
+                }); 
             }
             _ => {}
         }
