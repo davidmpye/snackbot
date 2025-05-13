@@ -147,27 +147,20 @@ impl App {
         let stack = Stack::builder().build();
 
         let make_selection_box = MakeSelectionBox::new();
-        stack.add_named(&make_selection_box, Some("make_selection_box"));
-
         let confirm_item_box = ConfirmItemBox::new();
-        stack.add_named(&confirm_item_box, Some("confirm_item_box"));
-
         let make_payment_box = MakePaymentBox::new();
-        stack.add_named(&make_payment_box, Some("make_payment_box"));
-
         let make_another_selection_box = MakeAnotherSelectionBox::new();
-        stack.add_named(&make_another_selection_box, Some("make_another_selection_box"));
-
-
         let vend_in_progress_box = VendInProgressBox::new();
         let vend_ok_box = VendOkBox::new();
         let vend_failed_box = VendFailedBox::new();
 
+        stack.add_named(&make_selection_box, Some("make_selection_box"));
+        stack.add_named(&confirm_item_box, Some("confirm_item_box"));
+        stack.add_named(&make_payment_box, Some("make_payment_box"));
+        stack.add_named(&make_another_selection_box, Some("make_another_selection_box"));
         stack.add_named(&vend_in_progress_box, Some("vend_in_progress_box"));
         stack.add_named(&vend_ok_box, Some("vend_ok_box"));
         stack.add_named(&vend_failed_box, Some("vend_failed_box"));
-
-        //  let _ = stack.add_named(&confirm_item_box, Some("confirm_item_box"));
 
         let window = ApplicationWindow::builder()
             .application(app)
@@ -486,7 +479,6 @@ impl App {
                         .child_by_name("make_another_selection_box")
                         .expect("Error: Make another selection box is missing from stack!"),
                 );
-
                 //Queue a message to leave this state after 3 seconds
                 let ch = self.event_channel_tx.clone();
                 glib::timeout_add_seconds(2, move || {
