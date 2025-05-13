@@ -144,8 +144,8 @@ pub async fn cashless_device_task(
                             }
                         }
                     }
-                    Timer::after(CASHLESS_DEVICE_POLL_INTERVAL).await;
                 }
+                Timer::after(CASHLESS_DEVICE_POLL_INTERVAL).await;
             }
             None => {
                 info!("Cashless device not found");
