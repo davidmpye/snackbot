@@ -15,12 +15,4 @@ impl VendInProgressBox {
     pub fn new() -> Self {
         Object::builder().build()
     }
-
-    pub fn set_reason(&self, reason: String) {
-        let i = imp::VendInProgressBox::from_obj(self);
-        i.reason.set_label(&format!(
-            "<span font=\"Arial Rounded MT 50\">{}</span>",
-            &reason
-        ));
-    }
 }

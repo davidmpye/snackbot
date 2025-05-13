@@ -322,7 +322,6 @@ impl App {
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(
                                     vmc_icd::cashless_device::CashlessDeviceCommand::CancelTransaction));            
                             },
-
                             _=> {},
                         }
                     },
@@ -500,7 +499,6 @@ impl App {
                     glib::ControlFlow::Break
                 }); 
             }
-
             AppState::VendFailed => {
                 self.stack.set_visible_child(
                     &self.stack.child_by_name("vend_failed_box").expect("Vendfailed missing from stack"));

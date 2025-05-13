@@ -4,7 +4,6 @@ use gtk4::{Box, Image, Label};
 
 #[derive(Default)]
 pub struct VendInProgressBox {
-    pub reason: Label,
 }
 
 #[glib::object_subclass]
@@ -19,17 +18,14 @@ impl ObjectImpl for VendInProgressBox {
     fn constructed(&self) {
         self.parent_constructed();
         self.obj().set_orientation(gtk4::Orientation::Vertical);
-
         self.obj().set_spacing(50);
         self.obj().append(
             &Label::builder()
                 .use_markup(true)
                 .justify(gtk4::Justification::Center)
-                .label("<span font=\"Arial Rounded MT 60\" color=\"red\">\n\nVending\n-\nPlease Wait</span>")
+                .label("<span font=\"Arial Rounded MT 60\">\n\nVending\n-\nPlease Wait</span>")
                 .build(),
         );
-        self.reason.set_use_markup(true);
-        self.obj().append(&self.reason);
     }
 }
 
