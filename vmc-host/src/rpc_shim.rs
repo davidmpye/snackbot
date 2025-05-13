@@ -73,6 +73,7 @@ pub(crate) fn spawn_vmc_driver(vmc_response_channel_tx:Sender<VmcResponse>, vmc_
                         }
                         val = cashless_topic.recv() => {
                             if let Ok(event) = val {
+                                println!("Got a cashless event");
                                 let _ = vmc_response_channel_tx.send(VmcResponse::CashlessEvent(event)).await;
                             }
                         }
