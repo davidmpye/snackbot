@@ -110,6 +110,7 @@ pub async fn cashless_device_task(
                                 device.set_device_enabled(bus, false).await;
                             }
                             CashlessDeviceCommand::RecordCashTransaction(amount, address) => {
+                                debug!("Record cash transaction");
                                 device
                                     .record_cash_transaction(
                                         bus,
@@ -119,6 +120,7 @@ pub async fn cashless_device_task(
                                     .await;
                             }
                             CashlessDeviceCommand::StartTransaction(amount, address) => {
+                                debug!("Entering start transaction");
                                 device
                                     .start_transaction(
                                         bus,
@@ -128,17 +130,21 @@ pub async fn cashless_device_task(
                                     .await;
                             }
                             CashlessDeviceCommand::CancelTransaction => {
+                                debug!("Cancelling transaction");
                                 device.cancel_transaction(bus).await;
                             }
                             CashlessDeviceCommand::VendSuccess(address) => {
+                                debug!("Vend success");
                                 device
                                     .vend_success(bus, [address.row as u8, address.col as u8])
                                     .await;
                             }
                             CashlessDeviceCommand::VendFailed => {
+                                debug!("Venf failed");
                                 device.vend_failed(bus).await;
                             }
                             CashlessDeviceCommand::Reset => {
+                                debug!("Resetting cashless device");
                                 //Break the main loop, and we will end up reinitialising the device.
                                 break 'main;
                             }
