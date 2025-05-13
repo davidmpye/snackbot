@@ -11,7 +11,8 @@ use embassy_sync::channel::Channel;
 use mdb_async::cashless_device::{CashlessDevice, PollEvent};
 
 use vmc_icd::cashless_device::{CashlessDeviceCommand, CashlessDeviceEvent};
-use vmc_icd::CashlessEvent;
+
+use vmc_icd::CashlessEventTopic;
 
 use postcard_rpc::header::VarHeader;
 
@@ -58,7 +59,7 @@ pub async fn cashless_device_task(
                             match e {
                                 PollEvent::VendApproved(amount) => {
                                     let _ = postcard_sender
-                                        .publish::<CashlessEvent>(
+                                        .publish::<CashlessEventTopic>(
                                             seq.into(),
                                             &CashlessDeviceEvent::VendApproved(amount),
                                         )
@@ -66,7 +67,7 @@ pub async fn cashless_device_task(
                                 }
                                 PollEvent::VendDenied => {
                                     let _ = postcard_sender
-                                        .publish::<CashlessEvent>(
+                                        .publish::<CashlessEventTopic>(
                                             seq.into(),
                                             &CashlessDeviceEvent::VendDenied,
                                         )
