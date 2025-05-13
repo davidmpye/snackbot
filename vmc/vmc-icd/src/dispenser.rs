@@ -28,12 +28,14 @@ pub enum DispenseError {
     OneOrNoCansLeft, //Can vendor won't (willingly) vend if only one can present
     NoDropDetected,  //not implemented yet - my machine does not support
     InvalidAddress,
+    CommsError,
 }
 
 
 //Information about a dispenser at a particular address
 //Will return None if the motor is not present
 pub type DispenserOption = Option<Dispenser>;
+
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
 pub struct Dispenser {
     pub address: DispenserAddress,

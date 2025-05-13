@@ -4,7 +4,7 @@ use postcard_rpc::{
     standard_icd::{PingEndpoint, WireError, ERROR_PATH},
 };
 
-use vmc_icd::{cashless_device::CashlessDeviceCommand, dispenser::{ DispenseCommand, Dispenser, DispenserAddress}, CashlessDeviceCmdEndpoint, DispenserStatusEndpoint };//; SetCoinAcceptorEnabled};
+use vmc_icd::{cashless_device::CashlessDeviceCommand, dispenser::{ DispenseCommand, DispenseError, Dispenser, DispenserAddress}, CashlessDeviceCmdEndpoint, DispenserStatusEndpoint };//; SetCoinAcceptorEnabled};
 use vmc_icd::{CoinAcceptorEnableEndpoint,DispenseEndpoint};
 use std::convert::Infallible;
 
@@ -42,7 +42,6 @@ pub enum VmcResponse {
     CoinAcceptorEvent(CoinAcceptorEvent),
     CoinInsertedEvent(CoinInserted),
     CashlessEvent(CashlessDeviceEvent),
-
     DispenseSuccessEvent,
     DispenseFailedEvent,
 }
@@ -64,14 +63,26 @@ impl VmcDriver {
         }
     }
 
-    pub async fn dispense(&mut self, addr: DispenserAddress) -> Result<(), VmcClientError<Infallible>>{
-        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::Vend(addr)).await?;
-        Ok(())
+    pub async fn dispense(&mut self, addr: DispenserAddress) -> Result<(), DispenseError>{
+        match self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::Vend(addr)).await {
+            Ok(res) => {
+                res
+            }
+            _ => {
+                Err(DispenseError::CommsError)
+            }
+        }
     }
 
-    pub async fn force_dispense(&mut self, addr: DispenserAddress) -> Result<(), VmcClientError<Infallible>>{
-        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::ForceVend(addr)).await?;
-        Ok(())
+    pub async fn force_dispense(&mut self, addr: DispenserAddress) -> Result<(), DispenseError>{
+        match self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::Vend(addr)).await {
+            Ok(res) => {
+                res
+            }
+            _ => {
+                Err(DispenseError::CommsError)
+            }
+        }
     }
 
     pub async fn map_machine(&mut self) -> Vec<Dispenser> { 

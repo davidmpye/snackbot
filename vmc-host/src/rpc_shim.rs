@@ -82,6 +82,7 @@ pub(crate) fn spawn_vmc_driver(vmc_response_channel_tx:Sender<VmcResponse>, vmc_
                                 match cmd {
                                     VmcCommand::VendItem(row, col) => {
                                         println!("Vend command received - {}{}",row,col);
+                                        //Send VMC command
                                         match vmc.dispense(DispenserAddress {row, col}).await {
                                             Ok(()) => {
                                                 println!("Vend success");
