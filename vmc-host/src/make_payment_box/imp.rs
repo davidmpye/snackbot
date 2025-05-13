@@ -27,7 +27,7 @@ impl ObjectImpl for MakePaymentBox {
             &Label::builder()
                 .use_markup(true)
                 .justify(gtk4::Justification::Center)
-                .label("<span font=\"Arial Rounded MT 50\">Please use\nContactless</span>")
+                .label("<span font=\"Arial Rounded MT 50\">Please use\nContactless\nto pay</span>")
                 .build(),
         );
         self.obj().append(
@@ -37,13 +37,14 @@ impl ObjectImpl for MakePaymentBox {
                 .width_request(140)
                 .build(),
         );
-        self.obj().append(
+    /*    self.obj().append(
             &Label::builder()
                 .use_markup(true)
                 .justify(gtk4::Justification::Center)
                 .label("<span font=\"Arial Rounded MT 50\">or\nInsert Coins</span>")
                 .build(),
         );
+     */
         self.obj().append(
             &Image::builder()
                 .file("./coins.jpeg")
