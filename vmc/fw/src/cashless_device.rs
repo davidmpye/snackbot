@@ -58,6 +58,7 @@ pub async fn cashless_device_task(
                         if let Some(e) = event {
                             match e {
                                 PollEvent::VendApproved(amount) => {
+                                    debug!("Cashless device - vend approved");
                                     let _ = postcard_sender
                                         .publish::<CashlessEventTopic>(
                                             seq.into(),
