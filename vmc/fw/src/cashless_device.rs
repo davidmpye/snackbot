@@ -136,6 +136,7 @@ pub async fn cashless_device_task(
                             CashlessDeviceCommand::CancelTransaction => {
                                 debug!("Cancelling transaction");
                                 device.cancel_transaction(bus).await;
+                                device.end_session(bus).await;
                             }
                             CashlessDeviceCommand::VendSuccess(address) => {
                                 debug!("Vend success");
