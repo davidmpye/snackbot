@@ -28,6 +28,7 @@ impl ObjectImpl for ConfirmItemBox {
 
         self.item_name.set_justify(gtk4::Justification::Center);
         self.item_name.set_use_markup(true);
+        self.item_name.set_wrap(true);
 
         self.item_price.set_use_markup(true);
 

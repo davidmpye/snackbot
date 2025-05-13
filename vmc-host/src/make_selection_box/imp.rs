@@ -4,10 +4,7 @@ use gtk4::{Box, Image, Label};
 
 #[derive(Default)]
 pub struct MakeSelectionBox {
-    pub c: u16,
-    pub item_image: Image,
-    pub item_name: Label,
-    pub item_price: Label,
+    pub row_col: Label,
 }
 
 #[glib::object_subclass]
@@ -26,18 +23,10 @@ impl ObjectImpl for MakeSelectionBox {
         self.parent_constructed();
         self.obj().set_orientation(gtk4::Orientation::Vertical);
 
-        self.item_image.set_width_request(200);
-        self.item_image.set_height_request(300);
 
-        self.item_name.set_justify(gtk4::Justification::Center);
-        self.item_name.set_use_markup(true);
-
-        self.item_price.set_use_markup(true);
-
-        //Add the three items to the child pane
-        self.obj().append(&self.item_name);
-        self.obj().append(&self.item_image);
-        self.obj().append(&self.item_price);
+        self.row_col.set_use_markup(true);
+        self.row_col.set_label("<span font=\"Arial Rounded MT 80\">_ _</span>");
+        self.obj().append(&self.row_col);
 
         self.obj().set_spacing(50);
         self.obj().append(

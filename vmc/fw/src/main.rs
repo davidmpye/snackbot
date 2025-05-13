@@ -2,6 +2,7 @@
 #![no_main]
 
 use {defmt_rtt as _, panic_probe as _};
+use defmt::*;
 
 use embassy_executor::Spawner;
 
@@ -15,7 +16,7 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
 use embassy_rp::{adc, adc::{Adc, Config, InterruptHandler}, bind_interrupts, peripherals};
-use embassy_rp::gpio::Pull;
+use embassy_rp::gpio::{Pull, Output, Level};
 
 use embassy_time::Duration;
 
@@ -39,24 +40,25 @@ use postcard_rpc::{
     },
 };
 
-
-
 use vmc_icd::*;
 
 mod coin_acceptor;
+mod cashless_device;
 mod motor_driver;
 mod usb_device_handler;
 mod chiller_driver;
-
 mod watchdog;
 
 use coin_acceptor::{coin_acceptor_task, set_coin_acceptor_enabled};
+use cashless_device::{cashless_device_task, cashless_device_cmd_handler};
 
 use motor_driver::{MotorDriver, motor_driver_dispense_task, motor_driver_dispenser_status};
-use chiller_driver::chiller_task;
 
 use usb_device_handler::usb_task;
 use usb_device_handler::UsbDeviceHandler;
+
+use chiller_driver::chiller_task;
+
 use watchdog::watchdog_task;
 
 type AppDriver = usb::Driver<'static, USB>;
@@ -101,6 +103,8 @@ define_dispatch! {
 
         | CoinAcceptorEnableEndpoint| async       | set_coin_acceptor_enabled     |
       //  | CoinAcceptorInfoEndpoint  | async       | coin_acceptor_info            |
+
+       | CashlessDeviceCmdEndpoint | async         |   cashless_device_cmd_handler       | 
     };
     
     topics_in: {    
@@ -129,11 +133,13 @@ assign_resources! {
         oe: PIN_11,
         clr: PIN_12,
     },
-    adc_pin: AdcResources {
-        pin: PIN_26,
+    chiller: ChillerResources {
+        thermistor_pin: PIN_26,
+        led_pin: PIN_19
     }
     watchdog: WatchdogResources {
-        watchdog : WATCHDOG
+        watchdog : WATCHDOG,
+        heartbeat_pin: PIN_22,
     }
 }
 
@@ -143,10 +149,10 @@ static DISPENSER_DRIVER: Mutex<CriticalSectionRawMutex, Option<MotorDriver>> = M
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
-    let resources = split_resources!(p);
-    
+       let resources = split_resources!(p);
+   
     //Spawn the watchdog task first
-    spawner.must_spawn(watchdog_task(resources.watchdog.watchdog));
+    spawner.must_spawn(watchdog_task(resources.watchdog.watchdog, Output::new(resources.watchdog.heartbeat_pin, Level::High)));
 
     // Create the driver from the HAL.
     let driver = UsbDriver::new(p.USB, Irqs);
@@ -171,33 +177,7 @@ async fn main(spawner: Spawner) {
     let device_handler = DEVICE_HANDLER.init(UsbDeviceHandler::new());
     builder.handler(device_handler);
 
-    {
-        //Set up the dispenser motor driver struct - the task that uses it is spawned by postcard-rpc
-        let mut m = DISPENSER_DRIVER.lock().await;
-        *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
-    }
-
-    //Set up the ADC for the chiller thermistor and spawn its' task
-    let adc = Adc::new(p.ADC, Irqs, Config::default());
-    let p26 = adc::Channel::new_pin(resources.adc_pin.pin, Pull::None);
-    spawner.must_spawn(chiller_task(adc, p26)); 
-
-    //Set up the multi-drop bus peripheral (and its' PIO backed 9 bit uart) 
-    let uart: PioUart<'_, 0> = PioUart::new(
-        p.PIN_21,
-        p.PIN_20,
-        p.PIO0,
-        Duration::from_millis(25),
-        Duration::from_millis(3),
-    );
-    let mdb = Mdb::new(uart);
-
-    {
-        //Place the MDB device into the mutex
-        let mut m = MDB_DRIVER.lock().await;
-        *m = Some(mdb);
-    }
-
+    debug!("Initialising Postcard-RPC server");
     //Set up the Postcard RPC server
     let context = Context {};
     let dispatcher = MyApp::new(context, spawner.into());
@@ -209,13 +189,56 @@ async fn main(spawner: Spawner) {
         dispatcher,
         vkk,
     );
+
+    {
+        debug!("Initialising motor driver");
+        //Set up the dispenser motor driver struct - the task that uses it is spawned by postcard-rpc
+        let mut m = DISPENSER_DRIVER.lock().await;
+        *m = Some(MotorDriver::new(resources.motor_driver_pins).await);
+    }
+
+    //Set up the ADC for the chiller thermistor and spawn its' task
+    debug!("Initialising ADC");
+    let adc = Adc::new(p.ADC, Irqs, Config::default());
+    let adc_channel = adc::Channel::new_pin(resources.chiller.thermistor_pin, Pull::None);
+
+    debug!("Spawning chiller task");
+    spawner.must_spawn(chiller_task(adc, adc_channel, Output::new(resources.chiller.led_pin, Level::Low))); 
+
+    //Set up the multi-drop bus peripheral (and its' PIO backed 9 bit uart) 
+    debug!("Initialising PIO UART");
+    let uart: PioUart<'_, 0> = PioUart::new(
+        p.PIN_21,
+        p.PIN_20,
+        p.PIO0,
+        Duration::from_millis(25),
+        Duration::from_millis(3),
+    );
+
+    debug!("Initialising MDB peripheral");
+    let mdb = Mdb::new(uart);
+    {
+        //Place the MDB device into the mutex
+        let mut m = MDB_DRIVER.lock().await;
+        *m = Some(mdb);
+    }
+
     // Build the builder - USB device will be run by usb_task
+    debug!("Spawning USB device task");
     let usb = builder.build();
     spawner.must_spawn(usb_task(usb));
 
     //Spawn the coin acceptor poll task
+    debug!("Spawning coin acceptor poll task");
     spawner.must_spawn(coin_acceptor_task(server.sender().clone()));
+
+    //Spawn the cashless device poll task
+    debug!("Spawning cashless device poll task");
+    spawner.must_spawn(cashless_device_task(server.sender().clone()));
+
     
+
+    debug!("Entering Postcard-RPC main loop");
     //Postcard server mainloop runs here
     loop {
         let _ = server.run().await;

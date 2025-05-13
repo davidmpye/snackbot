@@ -4,8 +4,8 @@ use postcard_rpc::{
     standard_icd::{PingEndpoint, WireError, ERROR_PATH},
 };
 
-use vmc_icd::{dispenser::{ DispenseCommand, Dispenser, DispenserAddress}, DispenserStatusEndpoint, };//; SetCoinAcceptorEnabled};
-use vmc_icd::DispenseEndpoint;
+use vmc_icd::{cashless_device::CashlessDeviceCommand, dispenser::{ DispenseCommand, DispenseError, Dispenser, DispenserAddress}, CashlessDeviceCmdEndpoint, DispenserStatusEndpoint };//; SetCoinAcceptorEnabled};
+use vmc_icd::{CoinAcceptorEnableEndpoint,DispenseEndpoint};
 use std::convert::Infallible;
 
 #[derive(Debug)]
@@ -20,7 +20,9 @@ impl<E> From<HostErr<WireError>> for VmcClientError<E> {
     }
 }
 
-use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting,};
+use vmc_icd::coin_acceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting,};
+
+use vmc_icd::cashless_device::{CashlessDeviceCommand::*,CashlessDeviceEvent};
 
 #[derive (Copy, Clone)]
 pub enum VmcCommand {
@@ -30,6 +32,7 @@ pub enum VmcCommand {
     GetDispenser(char,char),            //Get information about a specific dispenser
     SetCoinAcceptorEnabled(bool),   //Whether the coin acceptor should accept coins
     RefundCoins(u16),               //Refund amount
+    CashlessCmd(CashlessDeviceCommand) //
 }
 
 pub enum VmcResponse {
@@ -37,7 +40,10 @@ pub enum VmcResponse {
     Dispenser(Dispenser),
     //Vend result for a vend request
     CoinAcceptorEvent(CoinAcceptorEvent),
-    CoinInsertedEvent(CoinInserted)
+    CoinInsertedEvent(CoinInserted),
+    CashlessEvent(CashlessDeviceEvent),
+    DispenseSuccessEvent,
+    DispenseFailedEvent,
 }
 
 pub struct VmcDriver {
@@ -57,14 +63,26 @@ impl VmcDriver {
         }
     }
 
-    pub async fn dispense(&mut self, addr: DispenserAddress) -> Result<(), VmcClientError<Infallible>>{
-        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::Vend(addr)).await?;
-        Ok(())
+    pub async fn dispense(&mut self, addr: DispenserAddress) -> Result<(), DispenseError>{
+        match self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::Vend(addr)).await {
+            Ok(res) => {
+                res
+            }
+            _ => {
+                Err(DispenseError::CommsError)
+            }
+        }
     }
 
-    pub async fn force_dispense(&mut self, addr: DispenserAddress) -> Result<(), VmcClientError<Infallible>>{
-        let _res = self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::ForceVend(addr)).await?;
-        Ok(())
+    pub async fn force_dispense(&mut self, addr: DispenserAddress) -> Result<(), DispenseError>{
+        match self.driver.send_resp::<DispenseEndpoint>(&DispenseCommand::Vend(addr)).await {
+            Ok(res) => {
+                res
+            }
+            _ => {
+                Err(DispenseError::CommsError)
+            }
+        }
     }
 
     pub async fn map_machine(&mut self) -> Vec<Dispenser> { 
@@ -80,12 +98,18 @@ impl VmcDriver {
 
     //Sets whether the coin acceptor should accept coins or not
     pub async fn set_coinacceptor_enabled(&mut self, enable:bool) -> Result<(), VmcClientError<Infallible>> {
-    //    let _res = self.driver.send_resp::<SetCoinAcceptorEnabled>(&enable).await?;
+        let _res = self.driver.send_resp::<CoinAcceptorEnableEndpoint>(&enable).await?;
         Ok(())
     }
 
     pub async fn dispense_coins(&mut self, value: u16) -> Result<(u16), VmcClientError<Infallible>> {
       //  let amount_refunded = self.driver.send_resp::<DispenseCoins>(&value).await?;
         Ok(10)
+    }
+
+    pub async fn send_cashless_device_command(&mut self, cmd: CashlessDeviceCommand) -> Result<(),VmcClientError<Infallible>> {
+       let res  =self.driver.send_resp::<CashlessDeviceCmdEndpoint>(&cmd).await?;
+        //Fixme
+        Ok(())
     }
 }

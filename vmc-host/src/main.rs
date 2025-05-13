@@ -8,6 +8,16 @@ use crate::confirm_item_box::ConfirmItemBox;
 mod make_payment_box;
 use crate::make_payment_box::MakePaymentBox;
 
+mod make_another_selection_box;
+use crate::make_another_selection_box::MakeAnotherSelectionBox;
+
+mod vend_in_progress_box;
+use vend_in_progress_box::VendInProgressBox;
+mod vend_ok_box;
+use vend_ok_box::VendOkBox;
+mod vend_failed_box;
+use vend_failed_box::VendFailedBox;
+
 mod lcd_driver;
 use gtk4::builders::ImageBuilder;
 use lcd_driver::{LcdCommand, LcdDriver};
@@ -18,21 +28,27 @@ use vmc_driver::{VmcCommand, VmcDriver, VmcResponse};
 mod rpc_shim;
 use rpc_shim::{spawn_lcd_driver, spawn_vmc_driver};
 
-use vmc_icd::coinacceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
+use vmc_icd::coin_acceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
 use vmc_icd::dispenser::{Dispenser, DispenserAddress};
 use vmc_icd::EventTopic;
+use vmc_icd::cashless_device::{CashlessDeviceCommand, CashlessDeviceEvent};
 
 const APP_ID: &str = "uk.org.makerspace.snackbot";
 
 const KEYBOARD_DEVICE_NAME: &str = "matrix-keyboard";
 const VMC_DEVICE_NAME: &str = "vmc";
 
-use glib::clone;
+const IDLE_MESSAGE_L1: &str = "Plz buy m0ar";
+const IDLE_MESSAGE_L2: &str = "snackz kthx";
+
+const PAY_MESSAGE_L1: &str = "Please pay:";
+
+const APP_TIMEOUT_SECONDS: u16 = 30;
+
+use glib::ControlFlow::Continue;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow, Box, Button, Image, Label, Stack};
-
-use std::path::Path;
 
 use async_channel::{Receiver, Sender};
 
@@ -81,18 +97,27 @@ enum Event {
     Keypress(char),
     EscrowPressed,
     CoinInserted(u16),
+    Timeout_Poll_Event,
+    ChangeState(AppState),
+    CashlessEvent(CashlessDeviceEvent),
+    VendSuccess,
+    VendFailed,
 }
 
 enum AppState {
     Idle,
+    MakeAnotherSelection,
     AwaitingConfirmation,
     AwaitingPayment,
     Vending,
+    VendSuccess,
+    VendFailed,
 }
 
 struct App {
     pub state: AppState,
     pub credit: u16,
+    pub amount_due: u16,
     pub row_selected: Option<char>,
     pub col_selected: Option<char>,
 
@@ -100,11 +125,14 @@ struct App {
     pub make_selection_box: MakeSelectionBox,
     pub confirm_item_box: ConfirmItemBox,
     pub make_payment_box: MakePaymentBox,
+    pub make_another_selection_box: MakeAnotherSelectionBox,
 
     pub lcd_channel: Sender<LcdCommand>,
     pub vmc_command_channel: Sender<VmcCommand>,
     pub event_channel_tx: Sender<Event>,
     pub event_channel_rx: Receiver<Event>,
+
+    pub seconds_since_last_event: u16,
 }
 
 impl App {
@@ -119,15 +147,20 @@ impl App {
         let stack = Stack::builder().build();
 
         let make_selection_box = MakeSelectionBox::new();
-        stack.add_named(&make_selection_box, Some("make_selection_box"));
-
         let confirm_item_box = ConfirmItemBox::new();
-        stack.add_named(&confirm_item_box, Some("confirm_item_box"));
-
         let make_payment_box = MakePaymentBox::new();
-        stack.add_named(&make_payment_box, Some("make_payment_box"));
+        let make_another_selection_box = MakeAnotherSelectionBox::new();
+        let vend_in_progress_box = VendInProgressBox::new();
+        let vend_ok_box = VendOkBox::new();
+        let vend_failed_box = VendFailedBox::new();
 
-        //  let _ = stack.add_named(&confirm_item_box, Some("confirm_item_box"));
+        stack.add_named(&make_selection_box, Some("make_selection_box"));
+        stack.add_named(&confirm_item_box, Some("confirm_item_box"));
+        stack.add_named(&make_payment_box, Some("make_payment_box"));
+        stack.add_named(&make_another_selection_box, Some("make_another_selection_box"));
+        stack.add_named(&vend_in_progress_box, Some("vend_in_progress_box"));
+        stack.add_named(&vend_ok_box, Some("vend_ok_box"));
+        stack.add_named(&vend_failed_box, Some("vend_failed_box"));
 
         let window = ApplicationWindow::builder()
             .application(app)
@@ -141,9 +174,12 @@ impl App {
 
         window.present();
 
+        let _ = lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
+
         Self {
             state: AppState::Idle,
             credit: 0,
+            amount_due: 0,
             row_selected: None,
             col_selected: None,
             stack,
@@ -151,15 +187,45 @@ impl App {
             make_selection_box,
             confirm_item_box,
             make_payment_box,
+            make_another_selection_box,
 
             lcd_channel,
             vmc_command_channel,
             event_channel_rx,
             event_channel_tx,
+
+            seconds_since_last_event: 0,
         }
     }
 
     pub fn handle_event(&mut self, event: Event) {
+        //Handle timeout events separately from main state machine
+        match event {
+            Event::Timeout_Poll_Event => {
+                if !matches!(self.state, AppState::Idle) {
+                    if self.seconds_since_last_event == APP_TIMEOUT_SECONDS {
+                        println!("Timeout - return to idle state");
+                        self.state = AppState::Idle;
+                        self.seconds_since_last_event = 0;
+                        self.update_ui();
+                    }
+                    else {
+                        self.seconds_since_last_event += 1;
+                    }
+                }
+                return;
+            }
+            Event::ChangeState(state) => {
+                self.state = state;
+                self.update_ui();
+                return;
+            }
+            _ => {
+                //Another event occurred - reset timer
+                self.seconds_since_last_event = 0;
+            }
+        }
+        //Handle other events
         match self.state {
             AppState::Idle => {
                 //In idle, we are waiting for key press events to select an item
@@ -201,16 +267,38 @@ impl App {
                             '\n' => {
                                 //Into payment sate
                                 self.state = AppState::AwaitingPayment;
+
+                                //Find the item and set the balance
+                                match get_stock_item(DispenserAddress {
+                                    row: self.row_selected.unwrap(),
+                                    col: self.col_selected.unwrap(),
+                                }) {
+                                    Some(item) => {
+                                        self.amount_due = item.price;
+                                    }
+                                    None => {
+                                        println!("Error - item no longer found - shouldnt happen!");
+                                    }
+                                }
                                 //Enable coin acceptor
-                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(true));
+                                //let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(true));
+
+                                //Set amount for card reader
+                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(
+                                    vmc_icd::cashless_device::CashlessDeviceCommand::StartTransaction(
+                                        self.amount_due, 
+                                        DispenserAddress {
+                                            row: self.row_selected.unwrap(),
+                                            col : self.col_selected.unwrap()
+                                        }
+                                    )
+                                ));
                             }
                             '\x1b' => {
                                 //Cancel
                                 self.row_selected = None;
                                 self.col_selected = None;
-                                self.state = AppState::Idle;
-                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
-
+                                self.state = AppState::Idle;                   
                             }
                             _ => {}
                         }
@@ -229,9 +317,10 @@ impl App {
                                 self.state = AppState::Idle;
                                 //Disable coin acceptor
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
-                            },
-                            '\n' => {
-                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
+
+                                //Cancel card reader transaction
+                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(
+                                    vmc_icd::cashless_device::CashlessDeviceCommand::CancelTransaction));            
                             },
                             _=> {},
                         }
@@ -243,19 +332,67 @@ impl App {
                          self.row_selected = None;
                          self.col_selected = None;
                          self.state = AppState::Idle;
+                         self.amount_due = 0;
                          //Disable coin acceptor
                          let _ = self.vmc_command_channel.send_blocking(VmcCommand::SetCoinAcceptorEnabled(false));
-                    },
+                         //Cancel the cashless transaction
+                         let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::CancelTransaction));
+                         //Need to refund coins if any inserted
+                    },/*
                     Event::CoinInserted(value) => {
                         //Update the credit
-                        println!("Got paid {}", value)
-                    }
+                        self.credit += value;
+                        if self.credit >= self.amount_due {
+                            //Move to vend
+                            self.state = AppState::Vending;
+                            let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
+                        }
+                    }*/
+                    Event::CashlessEvent(e) => {
+                        match e {
+                            CashlessDeviceEvent::VendApproved(amount) => {
+                                println!("Vend approved for amount: {}",amount);
+                                if amount == self.amount_due {
+                                    let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
+                                    self.state = AppState::Vending;
+                                }
+                                else {
+                                    //This shouldn't happen - cancel.
+                                    println!("Cashless device approved for wrong amount");
+                                    let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::CancelTransaction));
+                                }
+                            }
+                            _ => {
+                                println!("Other event");
+                            },
+                        }
+                    },
+
+                    //Card payment event here...-
                     _ => {
-                        println!("Got escrow");
+                        println!("Other event - not handled");
                     }
                 }
             }
+            AppState::Vending => {
+                //Only two events acceptable here - success or failed.
+                match event {
+                    Event::VendSuccess => {
+                        //Send massage to cashless device to confirm vend successful, to end transaction
+                        let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::VendSuccess(DispenserAddress { row: self.row_selected.unwrap(), col: self.col_selected.unwrap() })));
+                        self.state = AppState::VendSuccess;              
+                    },
+                    Event::VendFailed => {
+                        //Cancel the cashless device transaction with vend failed (not sure what it will say if it didnt handle the transaction)
+                        let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::VendFailed));
+                        self.state = AppState::VendFailed;                   
+                    },
+                    //Fixme - need a timeout if vmc has gone wrong
+                    _ => {},
+                }
+            }
             _ => {}
+            
         }
         self.update_ui();
     }
@@ -272,6 +409,10 @@ impl App {
         //Display appropriate state
         match self.state {
             AppState::Idle => {
+                
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1),
+                    String::from(IDLE_MESSAGE_L2)));
+
                 //In this state, we should be showing the select item widgetstack 'page'
                 self.stack.set_visible_child(
                     &self
@@ -293,6 +434,8 @@ impl App {
                         self.col_selected.unwrap()
                     }
                 };
+                //Display idle message
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
             }
             AppState::AwaitingConfirmation => {
                 match get_stock_item(DispenserAddress {
@@ -314,18 +457,62 @@ impl App {
                         //Invalid, should say so.
                         self.row_selected = None;
                         self.col_selected = None;
-                        self.state = AppState::Idle;
+                        self.state = AppState::MakeAnotherSelection;
                         self.update_ui();
                     }
                 }
             }
             AppState::AwaitingPayment => {
+
+                let balance_due = self.amount_due - self.credit;
+                
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(PAY_MESSAGE_L1), 
+                format!("{}.{:02}", balance_due/100, balance_due%100)));
+
                 self.stack.set_visible_child(
                     &self
                         .stack
                         .child_by_name("make_payment_box")
                         .expect("Error: Make payment box is missing from stack!"),
                 );
+            }
+            AppState::MakeAnotherSelection => {
+                self.stack.set_visible_child(
+                    &self
+                        .stack
+                        .child_by_name("make_another_selection_box")
+                        .expect("Error: Make another selection box is missing from stack!"),
+                );
+                //Queue a message to leave this state after 3 seconds
+                let ch = self.event_channel_tx.clone();
+                glib::timeout_add_seconds(2, move || {
+                    let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
+                    glib::ControlFlow::Break
+                });
+            }
+            AppState::Vending => {
+                 self.stack.set_visible_child(
+                    &self.stack.child_by_name("vend_in_progress_box").expect("vend_in_progress_box missing from stack"));
+            }
+            AppState::VendSuccess => {
+                self.stack.set_visible_child(
+                    &self.stack.child_by_name("vend_ok_box").expect("Vendsuccess missing from stack"));
+                //Queue a message to leave this state after 3 seconds
+                let ch = self.event_channel_tx.clone();
+                glib::timeout_add_seconds(2, move || {
+                    let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
+                    glib::ControlFlow::Break
+                }); 
+            }
+            AppState::VendFailed => {
+                self.stack.set_visible_child(
+                    &self.stack.child_by_name("vend_failed_box").expect("Vendfailed missing from stack"));
+                //Queue a message to leave this state after 3 seconds
+                let ch = self.event_channel_tx.clone();
+                glib::timeout_add_seconds(2, move || {
+                    let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
+                    glib::ControlFlow::Break
+                }); 
             }
             _ => {}
         }
@@ -365,6 +552,7 @@ fn main() -> glib::ExitCode {
             app.main_loop().await;
         });
         
+        //Spawn a task to receive events from the VMC response channel, and repost them onto the app's main event loop
         let rx = vmc_response_channel_rx.clone();
         let tx = event_channel_tx.clone();
         glib::MainContext::default().spawn_local( async move {
@@ -373,10 +561,19 @@ fn main() -> glib::ExitCode {
                     Ok(event) => {
                         match event {
                             VmcResponse::CoinInsertedEvent(coin) => {
-                                tx.send(Event::CoinInserted(coin.value)).await;
+                                let _ = tx.send(Event::CoinInserted(coin.value)).await;
                             },
                             VmcResponse::CoinAcceptorEvent(CoinAcceptorEvent::EscrowPressed) => {
-                                tx.send(Event::EscrowPressed).await;
+                                let _ = tx.send(Event::EscrowPressed).await;
+                            }
+                            VmcResponse::CashlessEvent(e) => {
+                                let _ = tx.send(Event::CashlessEvent(e)).await;
+                            }
+                            VmcResponse::DispenseSuccessEvent => {
+                                let _ = tx.send(Event::VendSuccess).await;
+                            }
+                            VmcResponse::DispenseFailedEvent => {
+                                let _ = tx.send(Event::VendFailed).await;
                             }
                             _ => {
                                 println!("Ignored an event");
@@ -388,10 +585,13 @@ fn main() -> glib::ExitCode {
                     },
                 }
             }
-
         });
-        //Spawn the VMC listener loop onto the main glib event loop
-        //glib::MainC
+
+        let ch = event_channel_tx.clone();
+        glib::timeout_add_seconds(1, move || {
+            let _ = ch.send_blocking(Event::Timeout_Poll_Event);
+            glib::ControlFlow::Continue
+        });
 
     });
 

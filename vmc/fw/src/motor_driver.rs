@@ -393,6 +393,7 @@ impl<'a> MotorDriver<'a> {
     }
 
     pub async fn set_chiller_on(&mut self, status: bool) {
+        debug!("Setting chiller status to {}", status);
         self.chiller_on = status;
         //This will cause the status to be actioned.
         self.stop_motors().await;
