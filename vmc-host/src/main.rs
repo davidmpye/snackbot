@@ -352,10 +352,15 @@ impl App {
                         match e {
                             CashlessDeviceEvent::VendApproved(amount) => {
                                 println!("Vend approved for amount: {}",amount);
-                           //     if amount == self.amount_due {
+                                if amount == self.amount_due {
                                     let _ = self.vmc_command_channel.send_blocking(VmcCommand::VendItem(self.row_selected.unwrap(), self.col_selected.unwrap()));
                                     self.state = AppState::Vending;
-                             //   }
+                                }
+                                else {
+                                    //This shouldn't happen - cancel.
+                                    println!("Cashless device approved for wrong amount");
+                                    let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::CancelTransaction));
+                                }
                             }
                             _ => {
                                 println!("Other event");

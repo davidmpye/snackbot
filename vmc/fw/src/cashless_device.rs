@@ -57,8 +57,8 @@ pub async fn cashless_device_task(
                         device.poll(bus).await
                     };
                     //Collect poll events and send summary ones to postcard-rpc
+                    let mut seq = 0x00u16;
                     for event in poll_events {
-                        let mut seq = 0x00u16;
                         if let Some(e) = event {
                             match e {
                                 PollEvent::VendApproved(amount) => {
@@ -94,6 +94,9 @@ pub async fn cashless_device_task(
                                 PollEvent::CmdOutOfSequence => {
                                     error!("Cmd out of sequence, reinitialising device");
                                     break 'main;
+                                }
+                                PollEvent::EndSession => {
+                                    debug!("End session requested");
                                 }
                                 _ => {
                                     debug!("Received unhandled poll event");
