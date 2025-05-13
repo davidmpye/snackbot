@@ -91,7 +91,7 @@ pub async fn cashless_device_task(
                                     break 'main;
                                 }
                                 _ => {
-                                    debug!("Received poll event {}", e)
+                                    debug!("Received unhandled poll event");
                                 }
                             }
                             seq += 1;
