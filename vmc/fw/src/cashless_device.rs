@@ -101,7 +101,6 @@ pub async fn cashless_device_task(
                     while let Ok(cmd) = CASHLESS_COMMAND_CHANNEL.try_receive() {
                         let mut b = MDB_DRIVER.lock().await;
                         let bus = b.as_mut().expect("MDB driver not present");
-                        debug!("Processing command {}", cmd);
                         match cmd {
                             CashlessDeviceCommand::Enable => {
                                 device.set_device_enabled(bus, true).await;
