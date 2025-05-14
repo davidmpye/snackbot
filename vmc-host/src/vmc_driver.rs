@@ -108,8 +108,15 @@ impl VmcDriver {
     }
 
     pub async fn send_cashless_device_command(&mut self, cmd: CashlessDeviceCommand) -> Result<(),VmcClientError<Infallible>> {
-       let res  =self.driver.send_resp::<CashlessDeviceCmdEndpoint>(&cmd).await?;
-        //Fixme
+
+        match self.driver.send_resp::<CashlessDeviceCmdEndpoint>(&cmd).await {
+            Ok(()) => {
+                
+            }
+            Err((e)) => {
+                println!("Cashless device error {:?}", e);
+            }
+        };
         Ok(())
     }
 }

@@ -48,6 +48,7 @@ mod motor_driver;
 mod usb_device_handler;
 mod chiller_driver;
 mod watchdog;
+mod vmc;
 
 use coin_acceptor::{coin_acceptor_task, set_coin_acceptor_enabled};
 use cashless_device::{cashless_device_task, cashless_device_cmd_handler};
@@ -60,6 +61,8 @@ use usb_device_handler::UsbDeviceHandler;
 use chiller_driver::chiller_task;
 
 use watchdog::watchdog_task;
+
+use vmc::vmc_task;
 
 type AppDriver = usb::Driver<'static, USB>;
 type BufStorage = PacketBuffers<1024, 1024>;
@@ -236,7 +239,9 @@ async fn main(spawner: Spawner) {
     debug!("Spawning cashless device poll task");
     spawner.must_spawn(cashless_device_task(server.sender().clone()));
 
-    
+    //Spawn the vending machine task
+    debug!("Spawning VMC task");
+    spawner.must_spawn(vmc_task(server.sender().clone()));
 
     debug!("Entering Postcard-RPC main loop");
     //Postcard server mainloop runs here

@@ -104,6 +104,7 @@ enum Event {
     VendFailed,
 }
 
+#[derive(Debug)]
 enum AppState {
     Idle,
     MakeAnotherSelection,
@@ -210,6 +211,7 @@ impl App {
                         self.update_ui();
                     }
                     else {
+                        println!("State is {:?}", self.state);
                         self.seconds_since_last_event += 1;
                     }
                 }
@@ -409,7 +411,6 @@ impl App {
         //Display appropriate state
         match self.state {
             AppState::Idle => {
-                
                 let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1),
                     String::from(IDLE_MESSAGE_L2)));
 

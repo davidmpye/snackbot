@@ -13,7 +13,11 @@ use crate::cashless_device::*;
 pub mod chiller;
 use crate::chiller::*;
 
-
+struct VendCommand {
+    row: u8,
+    col: u8,
+    price: u16,
+}
 
 endpoints! {
     list = ENDPOINT_LIST;
