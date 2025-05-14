@@ -58,9 +58,17 @@ pub async fn cashless_device_task(
                     };
                     //Collect poll events and send summary ones to postcard-rpc
                     let mut seq = 0x00u16;
+                    debug!("Preparing to process {} poll events", poll_events.len());
                     for event in poll_events {
                         if let Some(e) = event {
                             match e {
+                                PollEvent::BeginSessionLevelAdvanced(_) | PollEvent::BeginSessionLevelBasic(_) => {
+                                    //No, we don't want it to initiate sessions.
+                                    debug!("Terminated a reader-initiated begin session request");
+                                    let mut b = MDB_DRIVER.lock().await;
+                                    let bus = b.as_mut().expect("MDB driver not present");
+                                    device.cancel_transaction(bus).await;
+                                }
                                 PollEvent::VendApproved(amount) => {
                                     debug!("Cashless device - vend approved for {}", amount);
                                     let _ = postcard_sender
@@ -71,6 +79,7 @@ pub async fn cashless_device_task(
                                         .await;
                                 }
                                 PollEvent::VendDenied => {
+                                    debug!("Cashless device - vend denied");
                                     let _ = postcard_sender
                                         .publish::<CashlessEventTopic>(
                                             seq.into(),
@@ -103,7 +112,7 @@ pub async fn cashless_device_task(
                                     break 'main;
                                 }
                                 PollEvent::EndSession => {
-                                    debug!("End session");
+                                    debug!("End session confirmed by reader");
                                 }
                                 _ => {
                                     debug!("Received unhandled poll event");
@@ -164,6 +173,9 @@ pub async fn cashless_device_task(
                                 debug!("Resetting cashless device");
                                 //Break the main loop, and we will end up reinitialising the device.
                                 break 'main;
+                            }
+                            _ => {
+                                error!("Unhandled command");
                             }
                         }
                     }
