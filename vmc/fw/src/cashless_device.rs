@@ -97,7 +97,7 @@ pub async fn cashless_device_task(
                                     debug!("Session cancel request received");
                                     let mut b = MDB_DRIVER.lock().await;
                                     let bus = b.as_mut().expect("MDB driver not present");
-                                    device.cancel_transaction(bus).await;
+                                    device.end_session(bus).await;
                                 }
                                 PollEvent::Cancelled => {
                                     debug!("Cancelled");
