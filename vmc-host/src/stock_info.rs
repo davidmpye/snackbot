@@ -157,7 +157,14 @@ pub fn get_stock_item(address: DispenserAddress) -> Option<StockItem> {
                 price: 90,
             })
         },
-
+        DispenserAddress{row:'F',col:'0'} => {
+            Some(StockItem { 
+                address,
+                name: String::from("Diet Coke"),
+                image_url: String::from("./doritos.jpg"),
+                price: 90,
+            })
+        },
         DispenserAddress{row:'F',col:'1'} => {
             Some(StockItem { 
                 address,
