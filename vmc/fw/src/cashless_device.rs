@@ -58,7 +58,6 @@ pub async fn cashless_device_task(
                     };
                     //Collect poll events and send summary ones to postcard-rpc
                     let mut seq = 0x00u16;
-                    debug!("Preparing to process {} poll events", poll_events.len());
                     for event in poll_events {
                         if let Some(e) = event {
                             match e {
