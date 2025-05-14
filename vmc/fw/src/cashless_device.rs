@@ -122,13 +122,16 @@ pub async fn cashless_device_task(
                     }
                     //Handle any pending commands
                     while let Ok(cmd) = CASHLESS_COMMAND_CHANNEL.try_receive() {
+                        debug!("Locking mutex");
                         let mut b = MDB_DRIVER.lock().await;
                         let bus = b.as_mut().expect("MDB driver not present");
                         match cmd {
                             CashlessDeviceCommand::Enable => {
+                                debug!("Enabling reader");
                                 device.set_device_enabled(bus, true).await;
                             }
                             CashlessDeviceCommand::Disable => {
+                                debug!("Disabling reader");
                                 device.set_device_enabled(bus, false).await;
                             }
                             CashlessDeviceCommand::RecordCashTransaction(amount, address) => {
@@ -196,5 +199,7 @@ pub async fn cashless_device_cmd_handler(
     _header: VarHeader,
     cmd: CashlessDeviceCommand,
 ) {
+    debug!("Command received, sending down channel");
     CASHLESS_COMMAND_CHANNEL.send(cmd).await;
+    debug!("Command sent down channel");
 }
