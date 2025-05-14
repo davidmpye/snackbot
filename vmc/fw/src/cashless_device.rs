@@ -154,7 +154,7 @@ pub async fn cashless_device_task(
                             CashlessDeviceCommand::CancelTransaction => {
                                 debug!("Cancelling transaction");
                                 device.cancel_transaction(bus).await;
-                                device.end_session(bus).await;
+                                //It should then say vend denied, then we send end session
                             }
                             CashlessDeviceCommand::VendSuccess(address) => {
                                 debug!("Vend success");
