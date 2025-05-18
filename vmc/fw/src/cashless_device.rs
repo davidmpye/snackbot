@@ -62,7 +62,8 @@ pub async fn cashless_device_task(
                         if let Some(e) = event {
                             match e {
                                 PollEvent::BeginSessionLevelAdvanced(_) | PollEvent::BeginSessionLevelBasic(_) => {
-                                    //No, we don't want it to initiate sessions.
+                                    //No, we don't want it to initiate sessions itself,
+                                    //so if it tries to do so, we cancel it.
                                     debug!("Terminated a reader-initiated begin session request");
                                     let mut b = MDB_DRIVER.lock().await;
                                     let bus = b.as_mut().expect("MDB driver not present");
@@ -168,7 +169,9 @@ pub async fn cashless_device_task(
                             }
                             CashlessDeviceCommand::VendFailed => {
                                 debug!("Vend failed");
+                                //Report 'vend failed' to the device, so it will handle a refund
                                 device.vend_failed(bus).await;
+                                //End the session to return the device to the IDLE state
                                 device.end_session(bus).await;
                             }
                             CashlessDeviceCommand::Reset => {

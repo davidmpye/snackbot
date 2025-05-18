@@ -103,11 +103,8 @@ define_dispatch! {
         | ----------                | ----        | -------                       |
         | DispenseEndpoint          | spawn       | motor_driver_dispense_task    | //Spawn fn due to duration of operation
         | DispenserStatusEndpoint   | async       | motor_driver_dispenser_status | //Finding status is fast enough to be an async fn
-
         | CoinAcceptorEnableEndpoint| async       | set_coin_acceptor_enabled     |
-      //  | CoinAcceptorInfoEndpoint  | async       | coin_acceptor_info            |
-
-       | CashlessDeviceCmdEndpoint | async         |   cashless_device_cmd_handler       | 
+        | CashlessDeviceCmdEndpoint | async       | cashless_device_cmd_handler   | 
     };
     
     topics_in: {    
