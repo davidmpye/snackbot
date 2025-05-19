@@ -54,7 +54,7 @@ pub async fn chiller_task(
         let res_val = (adc_voltage  * THERMISTOR_PULLUP_VAL_OHMS as f32) / (3300.0 - adc_voltage); //3300mV = VRef
         match steinhart_temp_calc(res_val as f64, THERMISTOR_A_VAL, THERMISTOR_B_VAL, THERMISTOR_C_VAL) {
             Ok(temp) => {
-                if temp < MIN_TEMP  || temp > MAX_TEMP {
+                if !(MIN_TEMP..=MAX_TEMP).contains(&temp) {
                     error!("Thermistor error - {}'C outside acceptable range of {} to {}, chiller disabled", temp, MIN_TEMP, MAX_TEMP);
                     //Disable chiller 
                     set_chiller_state(false).await;
