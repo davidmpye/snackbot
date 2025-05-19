@@ -40,7 +40,7 @@ pub async fn cashless_device_task(
             let bus = b.as_mut().expect("MDB driver not present");
             let d = CashlessDevice::init(bus).await;
             if let Some(ref device) = d {   
-                device.set_device_enabled(bus, true).await;
+                let _ = device.set_device_enabled(bus, true).await;
             }
             d
         };
@@ -67,7 +67,7 @@ pub async fn cashless_device_task(
                                     debug!("Terminated a reader-initiated begin session request");
                                     let mut b = MDB_DRIVER.lock().await;
                                     let bus = b.as_mut().expect("MDB driver not present");
-                                    device.cancel_transaction(bus).await;
+                                    let _ = device.cancel_transaction(bus).await;
                                 }
                                 PollEvent::VendApproved(amount) => {
                                     debug!("Cashless device - vend approved for {}", amount);
@@ -89,7 +89,7 @@ pub async fn cashless_device_task(
                                     //End session
                                     let mut b = MDB_DRIVER.lock().await;
                                     let bus = b.as_mut().expect("MDB driver not present");
-                                    device.end_session(bus).await;
+                                    let _ = device.end_session(bus).await;
                                 }
                                 PollEvent::Malfunction(_code) => {
                                     error!("Received cashless device malfunction");
@@ -98,13 +98,13 @@ pub async fn cashless_device_task(
                                     debug!("Session cancel request received");
                                     let mut b = MDB_DRIVER.lock().await;
                                     let bus = b.as_mut().expect("MDB driver not present");
-                                    device.end_session(bus).await;
+                                    let _ = device.end_session(bus).await;
                                 }
                                 PollEvent::Cancelled => {
                                     debug!("Cancelled");
                                     let mut b = MDB_DRIVER.lock().await;
                                     let bus = b.as_mut().expect("MDB driver not present");
-                                    device.end_session(bus).await;
+                                    let _ = device.end_session(bus).await;
                                 }
                                 PollEvent::CmdOutOfSequence => {
                                     error!("Cmd out of sequence, reinitialising device");
@@ -129,15 +129,15 @@ pub async fn cashless_device_task(
                         match cmd {
                             CashlessDeviceCommand::Enable => {
                                 debug!("Enabling reader");
-                                device.set_device_enabled(bus, true).await;
+                                let _ = device.set_device_enabled(bus, true).await;
                             }
                             CashlessDeviceCommand::Disable => {
                                 debug!("Disabling reader");
-                                device.set_device_enabled(bus, false).await;
+                                let _ = device.set_device_enabled(bus, false).await;
                             }
                             CashlessDeviceCommand::RecordCashTransaction(amount, address) => {
                                 debug!("Record cash transaction");
-                                device
+                                let _ = device
                                     .record_cash_transaction(
                                         bus,
                                         amount,
@@ -147,7 +147,7 @@ pub async fn cashless_device_task(
                             }
                             CashlessDeviceCommand::StartTransaction(amount, address) => {
                                 debug!("Entering start transaction");
-                                device
+                                let _ = device
                                     .start_transaction(
                                         bus,
                                         amount,
@@ -157,22 +157,23 @@ pub async fn cashless_device_task(
                             }
                             CashlessDeviceCommand::CancelTransaction => {
                                 debug!("Cancelling transaction");
-                                device.cancel_transaction(bus).await;
+                                let _ = device.cancel_transaction(bus).await;
                                 //It should then say vend denied, then we send end session
                             }
                             CashlessDeviceCommand::VendSuccess(address) => {
                                 debug!("Vend success");
-                                device
+                                let _ = device
                                     .vend_success(bus, [address.row as u8, address.col as u8])
                                     .await;
-                                device.end_session(bus).await;
+
+                                let _ = device.end_session(bus).await;
                             }
                             CashlessDeviceCommand::VendFailed => {
                                 debug!("Vend failed");
                                 //Report 'vend failed' to the device, so it will handle a refund
-                                device.vend_failed(bus).await;
+                                let _ = device.vend_failed(bus).await;
                                 //End the session to return the device to the IDLE state
-                                device.end_session(bus).await;
+                                let _ = device.end_session(bus).await;
                             }
                             CashlessDeviceCommand::Reset => {
                                 debug!("Resetting cashless device");
