@@ -12,7 +12,6 @@ use mdb_async::cashless_device::{CashlessDevice, PollEvent};
 
 use vmc_icd::cashless_device::{CashlessDeviceCommand, CashlessDeviceEvent};
 
-use vmc_icd::CashlessEventTopic;
 
 use postcard_rpc::header::VarHeader;
 
@@ -71,21 +70,21 @@ pub async fn cashless_device_task(
                                 }
                                 PollEvent::VendApproved(amount) => {
                                     debug!("Cashless device - vend approved for {}", amount);
-                                    let _ = postcard_sender
-                                        .publish::<CashlessEventTopic>(
-                                            seq.into(),
-                                            &CashlessDeviceEvent::VendApproved(amount),
-                                        )
-                                        .await;
+                            //        let _ = postcard_sender
+                             //           .publish::<CashlessEventTopic>(
+                              //              seq.into(),
+                               //             &CashlessDeviceEvent::VendApproved(amount),
+                                //        )
+                                 //       .await;
                                 }
                                 PollEvent::VendDenied => {
                                     debug!("Cashless device - vend denied");
-                                    let _ = postcard_sender
-                                        .publish::<CashlessEventTopic>(
-                                            seq.into(),
-                                            &CashlessDeviceEvent::VendDenied,
-                                        )
-                                        .await;
+                        //            let _ = postcard_sender
+                         //               .publish::<CashlessEventTopic>(
+                           //             seq.into(),
+                            //            &CashlessDeviceEvent::VendDenied,
+                             //           )
+                               //         .await;
                                     //End session
                                     let mut b = MDB_DRIVER.lock().await;
                                     let bus = b.as_mut().expect("MDB driver not present");

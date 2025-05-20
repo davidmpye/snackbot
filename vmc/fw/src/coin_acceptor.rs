@@ -12,13 +12,6 @@ use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::Channel;
 
 use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
-use vmc_icd::EventTopic;
-
-use vmc_icd::CoinInsertedTopic;
-
-use vmc_icd::coin_acceptor::{CoinAcceptorEvent, CoinInserted, CoinRouting};
-
-use postcard_rpc::header::VarHeader;
 
 use crate::MDB_DRIVER;
 use crate::Context;
@@ -57,7 +50,7 @@ pub async fn coin_acceptor_task(
                 };
                 match events {
                     Ok(events) => {
-                        coinacceptor_process_poll_events(events, &postcard_sender).await;
+                      //  coinacceptor_process_poll_events(events, &postcard_sender).await;
                         Timer::after(COIN_ACCEPTOR_POLL_INTERVAL).await;
                     }
                     Err(()) => {
@@ -94,6 +87,7 @@ pub async fn coin_acceptor_task(
     }
 }
 
+/*
 //Process the potential list of poll events, and send these as event via postcard-rpc
 pub async fn coinacceptor_process_poll_events(
     events: [Option<PollEvent>; 16],
@@ -105,21 +99,21 @@ pub async fn coinacceptor_process_poll_events(
             Some(event) => {
                 match event {
                     PollEvent::Status(byte) => {
-                        let _ = postcard_sender
-                            .publish::<EventTopic>(seq.into(), &CoinAcceptorEvent::from(*byte))
-                            .await;
+                       // let _ = postcard_sender
+                       //     .publish::<EventTopic>(seq.into(), &CoinAcceptorEvent::from(*byte))
+                       //     .await;
                         seq += 1;
                     }
                     PollEvent::Coin(x) => {
                         info!("Coin inserted - unscaled value: {}", x.unscaled_value);
-                        let coinevent = CoinInserted {
-                            value: x.unscaled_value,
-                            routing: CoinRouting::CashBox, //fixme!
-                        };
-                        let _ = postcard_sender
-                            .publish::<CoinInsertedTopic>(seq.into(), &coinevent)
-                            .await;
-                        seq += 1;
+                   //     let coinevent = CoinInserted {
+                    //        value: x.unscaled_value,
+                     //       routing: CoinRouting::CashBox, //fixme!
+                      //  };
+                    //    let _ = postcard_sender
+                      //      .publish::<CoinInsertedTopic>(seq.into(), &coinevent)
+                     //       .await;
+                     //   seq += 1;
                     }
                     _ => {}
                 }
@@ -128,12 +122,12 @@ pub async fn coinacceptor_process_poll_events(
         }
     }
 }
-
-pub async fn set_coin_acceptor_enabled(_context: &mut Context, _header: VarHeader, enable: bool) {
+ */
+//pub async fn set_coin_acceptor_enabled(_context: &mut Context, _header: VarHeader, enable: bool) {
     //Send a message to the task via its' channel.
-    let message = match enable {
-        true => CoinAcceptorDriverCommand::Enable,
-        false => CoinAcceptorDriverCommand::Disable,
-    };
-    TASK_COMMAND_CHANNEL.send(message).await;
-}
+  //  let message = match enable {
+   //     true => CoinAcceptorDriverCommand::Enable,
+    //    false => CoinAcceptorDriverCommand::Disable,
+    //};
+    //TASK_COMMAND_CHANNEL.send(message).await;
+//}

@@ -7,8 +7,6 @@ use vmc_icd::dispenser::{
     CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenseCommand,
     DispenserOption, DispenserType, MotorStatus,
 };
-use vmc_icd::DispenseEndpoint;
-
 use postcard_rpc::header::VarHeader;
 
 use crate::{AppTx, MotorDriverResources, Sender, SpawnCtx, Context, DISPENSER_DRIVER};
@@ -32,7 +30,7 @@ pub async fn motor_driver_dispense_task(
         }
     };
     debug!("Awaiting reply from dispense task");
-    let _ = sender.reply::<DispenseEndpoint>(header.seq_no, &result).await;
+ //   let _ = sender.reply::<DispenseEndpoint>(header.seq_no, &result).await;
 }
 
 pub async fn motor_driver_dispenser_status(    

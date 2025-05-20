@@ -50,7 +50,7 @@ mod chiller_driver;
 mod watchdog;
 mod vmc;
 
-use coin_acceptor::{coin_acceptor_task, set_coin_acceptor_enabled};
+use coin_acceptor::{coin_acceptor_task};//set_coin_acceptor_enabled};
 use cashless_device::{cashless_device_task, cashless_device_cmd_handler};
 
 use motor_driver::{MotorDriver, motor_driver_dispense_task, motor_driver_dispenser_status};
@@ -101,10 +101,7 @@ define_dispatch! {
         list: ENDPOINT_LIST;
         | EndpointTy                | kind        | handler                       |
         | ----------                | ----        | -------                       |
-        | DispenseEndpoint          | spawn       | motor_driver_dispense_task    | //Spawn fn due to duration of operation
-        | DispenserStatusEndpoint   | async       | motor_driver_dispenser_status | //Finding status is fast enough to be an async fn
-        | CoinAcceptorEnableEndpoint| async       | set_coin_acceptor_enabled     |
-        | CashlessDeviceCmdEndpoint | async       | cashless_device_cmd_handler   | 
+
     };
     
     topics_in: {    
