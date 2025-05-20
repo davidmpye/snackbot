@@ -38,12 +38,6 @@ pub enum VendError {
 pub type VendResult = Result<(), VendError>;
 
 
-#[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
-pub struct ChillerStatus {
-    on: bool,
-    current_temperature: f32,
-    setpoint: f32,
-}
 
 endpoints! {
     list = ENDPOINT_LIST;

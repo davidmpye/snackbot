@@ -1,27 +1,31 @@
 #![no_std]
 #![no_main]
 
-use {defmt_rtt as _, panic_probe as _};
 use defmt::*;
+use {defmt_rtt as _, panic_probe as _};
 
 use embassy_executor::Spawner;
 
-use embassy_sync::mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::mutex::Mutex;
 
 use embassy_usb::Config as UsbConfig;
 
+use embassy_rp::gpio::{Level, Output, Pull};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
-use embassy_rp::{adc, adc::{Adc, Config, InterruptHandler}, bind_interrupts, peripherals};
-use embassy_rp::gpio::{Pull, Output, Level};
+use embassy_rp::{
+    adc,
+    adc::{Adc, Config, InterruptHandler},
+    bind_interrupts, peripherals,
+};
 
 use embassy_time::Duration;
 
-use static_cell::{ConstStaticCell, StaticCell};
 use assign_resources::assign_resources;
+use static_cell::{ConstStaticCell, StaticCell};
 
 use pio_9bit_uart_async::PioUart;
 
@@ -42,18 +46,18 @@ use postcard_rpc::{
 
 use vmc_icd::*;
 
-mod coin_acceptor;
 mod cashless_device;
+mod chiller_driver;
+mod coin_acceptor;
 mod motor_driver;
 mod usb_device_handler;
-mod chiller_driver;
-mod watchdog;
 mod vmc;
+mod watchdog;
 
-use coin_acceptor::{coin_acceptor_task};//set_coin_acceptor_enabled};
-use cashless_device::{cashless_device_task, cashless_device_cmd_handler};
+use cashless_device::{cashless_device_cmd_handler, cashless_device_task};
+use coin_acceptor::coin_acceptor_task; //set_coin_acceptor_enabled};
 
-use motor_driver::{MotorDriver, motor_driver_dispense_task, motor_driver_dispenser_status};
+use motor_driver::{motor_driver_dispense_task, motor_driver_dispenser_status, MotorDriver};
 
 use usb_device_handler::usb_task;
 use usb_device_handler::UsbDeviceHandler;
@@ -103,8 +107,8 @@ define_dispatch! {
         | ----------                | ----        | -------                       |
 
     };
-    
-    topics_in: {    
+
+    topics_in: {
         list: TOPICS_IN_LIST;
         | TopicTy                   | kind      | handler                       |
         | ----------                | ----      | -------                       |
@@ -140,16 +144,19 @@ assign_resources! {
     }
 }
 
-static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);    
+static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);
 static DISPENSER_DRIVER: Mutex<CriticalSectionRawMutex, Option<MotorDriver>> = Mutex::new(None);
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
-       let resources = split_resources!(p);
-   
+    let resources = split_resources!(p);
+
     //Spawn the watchdog task first
-    spawner.must_spawn(watchdog_task(resources.watchdog.watchdog, Output::new(resources.watchdog.heartbeat_pin, Level::High)));
+    spawner.must_spawn(watchdog_task(
+        resources.watchdog.watchdog,
+        Output::new(resources.watchdog.heartbeat_pin, Level::High),
+    ));
 
     // Create the driver from the HAL.
     let driver = UsbDriver::new(p.USB, Irqs);
@@ -200,9 +207,14 @@ async fn main(spawner: Spawner) {
     let adc_channel = adc::Channel::new_pin(resources.chiller.thermistor_pin, Pull::None);
 
     debug!("Spawning chiller task");
-    spawner.must_spawn(chiller_task(adc, adc_channel, Output::new(resources.chiller.led_pin, Level::Low))); 
+    spawner.must_spawn(chiller_task(
+        adc,
+        adc_channel,
+        Output::new(resources.chiller.led_pin, Level::Low),
+        server.sender().clone(),
+    ));
 
-    //Set up the multi-drop bus peripheral (and its' PIO backed 9 bit uart) 
+    //Set up 9 bit PIO-backed UART needed by MDB
     debug!("Initialising PIO UART");
     let uart: PioUart<'_, 0> = PioUart::new(
         p.PIN_21,
@@ -212,6 +224,7 @@ async fn main(spawner: Spawner) {
         Duration::from_millis(3),
     );
 
+    //Set up Multi-Drop-Bus
     debug!("Initialising MDB peripheral");
     let mdb = Mdb::new(uart);
     {

@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq, Copy, Clone)]
 pub struct ChillerStatus {
-    on: bool,
-    current_temperature: f32,
-    setpoint: f32,
+    pub on: bool,
+    pub current_temperature: f32,
+    pub setpoint: f32,
 }
-

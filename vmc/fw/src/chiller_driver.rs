@@ -7,6 +7,14 @@ use embassy_rp::gpio::{Level, Output};
 use defmt::*;
 use libm::{log, pow};
 
+use postcard_rpc::server::{impls::embassy_usb_v0_4::EUsbWireTx, Sender};
+use embassy_rp::peripherals::USB;
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_rp::usb::Driver as UsbDriver;
+
+use vmc_icd::chiller::ChillerStatus;
+use vmc_icd::Chiller;
+
 use crate::DISPENSER_DRIVER;
 
 const DEFAULT_TEMPERATURE_SETPOINT:f32 = 6.0;
@@ -28,20 +36,22 @@ const THERMISTOR_A_VAL:f64 = 1.3811057615602958e-3;
 const THERMISTOR_B_VAL:f64 = 2.370102475713365e-4;
 const THERMISTOR_C_VAL:f64 = 9.879312896211082e-8;
 
-
 #[embassy_executor::task]
 pub async fn chiller_task(
     mut adc: Adc<'static, Async>,
     mut channel: adc::Channel<'static>,
     mut led_pin: Output<'static>,
+    postcard_sender: Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>,
+
 ) -> ! {
     let mut measurements = [0u16; NUM_MEASUREMENTS_TO_AVERAGE];
     //Fixme - add channel to allow setpoint to be changed
     let setpoint:f32 = DEFAULT_TEMPERATURE_SETPOINT;
 
-    let mut chiller_change_cycle_count = CHILLER_MIN_CYCLE_COUNT; //this forces initial compute
+    let mut chiller_change_cycle_count = CHILLER_MIN_CYCLE_COUNT; //this forces initial compute at power on
     let mut chiller_current_state = false;
 
+    let mut msg_seq= 0x00u8;
     loop {
         //Take specified number of measurements and average them.c
         for val in measurements.iter_mut() {
@@ -85,6 +95,15 @@ pub async fn chiller_task(
                         chiller_change_cycle_count +=1;
                     }
                     info!("Drinks chiller temperature: {}'C, target {}'C, chiller_on: {}", temp, setpoint, chiller_current_state);
+
+                    //Send the postcard update
+                    let c = ChillerStatus {
+                        on : chiller_current_state,
+                        current_temperature : temp as f32,
+                        setpoint: setpoint,
+                    };
+                    let _ = postcard_sender.publish::<Chiller>(msg_seq.into(), &c).await;
+                    msg_seq = msg_seq.wrapping_add(1);
                 }
             },
             Err(_e) => {
