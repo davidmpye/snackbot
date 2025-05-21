@@ -3,40 +3,50 @@ use defmt::*;
 use embassy_rp::gpio::{Level, OutputOpenDrain};
 use embassy_time::{Duration, Timer, WithTimeout};
 
-use vmc_icd::dispenser::{
-    CanStatus, DispenseError, DispenseResult, Dispenser, DispenserAddress, DispenseCommand,
-    DispenserOption, DispenserType, MotorStatus,
-};
 use postcard_rpc::header::VarHeader;
 
-use crate::{AppTx, MotorDriverResources, Sender, SpawnCtx, Context, DISPENSER_DRIVER};
+use crate::{AppTx, Context, MotorDriverResources, Sender, SpawnCtx, DISPENSER_DRIVER};
 
-#[embassy_executor::task]
-pub async fn motor_driver_dispense_task(
-    _context: SpawnCtx,
-    header: VarHeader,
-    rqst: DispenseCommand,
-    sender: Sender<AppTx>,
-) {
-    let mut r = DISPENSER_DRIVER.lock().await;
-    let driver = r.as_mut().expect("Motor driver must be stored in mutex");
-    debug!("Sending dispense command");
-    let result = match rqst {
-        DispenseCommand::Vend(addr) => {
-            driver.dispense(addr).await
-        }
-        DispenseCommand::ForceVend(addr) => {
-            driver.force_dispense(addr).await
-        }
-    };
-    debug!("Awaiting reply from dispense task");
- //   let _ = sender.reply::<DispenseEndpoint>(header.seq_no, &result).await;
+use vmc_icd::VendError;
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum MotorStatus {
+    Ok,
+    MotorNotHome,
+    //If motor not present, Dispenser Option would just be None
 }
 
-pub async fn motor_driver_dispenser_status(    
+#[derive(PartialEq, Clone, Copy)]
+pub struct DispenserAddress {
+    pub row: char,
+    pub col: char,
+}
+
+#[derive(PartialEq, Clone, Copy)]
+pub struct Dispenser {
+    pub address: DispenserAddress,
+    pub dispenser_type: DispenserType,
+    pub motor_status: MotorStatus,
+    pub can_status: Option<CanStatus>,
+}
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum DispenserType {
+    Spiral,
+    Can,
+}
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum CanStatus {
+    Ok,
+    LastCan,
+}
+
+pub async fn motor_driver_dispenser_status(
     _context: &mut Context,
     _header: VarHeader,
-    addr: DispenserAddress) -> Option<Dispenser> {
+    addr: DispenserAddress,
+) -> Option<Dispenser> {
     let mut r = DISPENSER_DRIVER.lock().await;
     let driver = r.as_mut().expect("Motor driver must be stored in mutex");
     driver.get_dispenser(addr).await
@@ -262,19 +272,42 @@ impl<'a> MotorDriver<'a> {
         state
     }
 
-    pub async fn get_dispenser(&mut self, addr: DispenserAddress) -> DispenserOption {
-        if self.is_address_valid(addr) {
-            Some(Dispenser {
-                address: addr,
-                dispenser_type: match addr.row {
-                    'E' | 'F' => DispenserType::Can,
-                    _ => DispenserType::Spiral,
-                },
-                motor_status: self.motor_home_status(addr).await,
-                can_status: self.can_status(addr).await,
-            })
-        } else {
-            None
+    pub async fn get_dispenser(&mut self, addr: DispenserAddress) -> Option<Dispenser> {
+        if !self.is_address_valid(addr) {
+            return None;
+        }
+
+        let dispenser_type = match addr.row {
+            'E' | 'F' => DispenserType::Can,
+            _ => DispenserType::Spiral,
+        };
+
+        let motor_status = self.motor_home_status(addr).await;
+        let can_status = self.can_status(addr).await;
+
+        Some(Dispenser {
+            address: addr,
+            dispenser_type,
+            motor_status,
+            can_status,
+        })
+    }
+
+    pub fn is_dispensable(&mut self, dispenser: Dispenser) -> Result<(), VendError> {
+        match dispenser.motor_status {
+            MotorStatus::Ok => {
+                match dispenser.dispenser_type {
+                    DispenserType::Spiral => Ok(()),
+                    DispenserType::Can => {
+                        //Cans need double check that they are home
+                        match dispenser.can_status.expect("Can must have can status") {
+                            CanStatus::Ok => Ok(()),
+                            CanStatus::LastCan => Err(VendError::OneOrNoCansLeft),
+                        }
+                    }
+                }
+            }
+            MotorStatus::MotorNotHome => Err(VendError::MotorNotHome),
         }
     }
 
@@ -323,22 +356,14 @@ impl<'a> MotorDriver<'a> {
         Some(status)
     }
 
-    pub async fn dispense(&mut self, addr: DispenserAddress) -> DispenseResult {
-        if self.motor_home_status(addr).await != MotorStatus::Ok {
-            error!("Refusing to dispense item - motor not home at start of vend");
-            return Err(DispenseError::MotorNotHome);
+    pub async fn dispense(&mut self, dispenser: Dispenser, omit_checks: bool) -> Result<(), VendError> {
+        //Perform the pre-dispense checks
+        if !omit_checks {
+            let _ = self.is_dispensable(dispenser)?;
         }
-        //If it is a can row, check if we have >1 can left too
-        if let Some(can_state) = self.can_status(addr).await {
-            if can_state != CanStatus::Ok {
-                error!("Refusing to dispense last can");
-                return Err(DispenseError::OneOrNoCansLeft);
-            }
-        }
-        self.force_dispense(addr).await
-    }
 
-    pub async fn force_dispense(&mut self, addr: DispenserAddress) -> DispenseResult {
+        //OK, it's good
+        let addr = dispenser.address;
         debug!("Driving dispense motor at {}{}", addr.row, addr.col);
         self.drive_motor(addr).await;
         let home_gpio_index = MotorDriver::motor_homed_gpio_index(addr);
@@ -362,7 +387,7 @@ impl<'a> MotorDriver<'a> {
             self.output_enable.set_high();
             Timer::after_micros(20).await;
             self.stop_motors().await;
-            return Err(DispenseError::MotorStuckHome);
+            return Err(VendError::MotorStuckHome);
         }
 
         //Avoid issue with bouncing microswitch contacts
@@ -378,7 +403,7 @@ impl<'a> MotorDriver<'a> {
         self.output_enable.set_high();
         Timer::after_micros(20).await;
 
-        //Motor off
+        //Motors off
         self.stop_motors().await;
 
         if b.is_ok() {
@@ -386,7 +411,7 @@ impl<'a> MotorDriver<'a> {
             Ok(())
         } else {
             error!("Motor did not return home in time (3 sec)");
-            Err(DispenseError::MotorStuckNotHome)
+            Err(VendError::MotorStuckNotHome)
         }
     }
 

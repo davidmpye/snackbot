@@ -22,7 +22,7 @@ use embassy_rp::{
     bind_interrupts, peripherals,
 };
 
-use embassy_time::Duration;
+use embassy_time::{Duration, Timer};
 
 use assign_resources::assign_resources;
 use static_cell::{ConstStaticCell, StaticCell};
@@ -54,11 +54,10 @@ mod usb_device_handler;
 mod vmc;
 mod watchdog;
 
-use cashless_device::{cashless_device_cmd_handler, cashless_device_task};
+use cashless_device::cashless_device_task;
 use coin_acceptor::coin_acceptor_task; //set_coin_acceptor_enabled};
 
-use motor_driver::{motor_driver_dispense_task, motor_driver_dispenser_status, MotorDriver};
-
+use motor_driver::{motor_driver_dispenser_status, MotorDriver};
 use usb_device_handler::usb_task;
 use usb_device_handler::UsbDeviceHandler;
 
@@ -66,7 +65,8 @@ use chiller_driver::chiller_task;
 
 use watchdog::watchdog_task;
 
-use vmc::vmc_task;
+use vmc::vend_handler;
+
 
 type AppDriver = usb::Driver<'static, USB>;
 type BufStorage = PacketBuffers<1024, 1024>;
@@ -105,7 +105,10 @@ define_dispatch! {
         list: ENDPOINT_LIST;
         | EndpointTy                | kind        | handler                       |
         | ----------                | ----        | -------                       |
-
+   //     | ItemAvailable             | async       | item_available_handler        |
+        | Vend                      | spawn       | vend_handler                  |
+    //    | ForceDispense             | async       | force_dispense_handler        |
+     //   | CancelVend                | async       | cancel_vend_handler           |
     };
 
     topics_in: {
@@ -244,15 +247,13 @@ async fn main(spawner: Spawner) {
 
     //Spawn the cashless device poll task
     debug!("Spawning cashless device poll task");
-    spawner.must_spawn(cashless_device_task(server.sender().clone()));
-
-    //Spawn the vending machine task
-    debug!("Spawning VMC task");
-    spawner.must_spawn(vmc_task(server.sender().clone()));
+    spawner.must_spawn(cashless_device_task());
 
     debug!("Entering Postcard-RPC main loop");
     //Postcard server mainloop runs here
     loop {
         let _ = server.run().await;
+        //Needed to prevent potential hard lock if host disconnects
+        Timer::after(Duration::from_millis(100)).await;
     }
 }

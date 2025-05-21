@@ -1,14 +1,11 @@
 #![cfg_attr(not(feature = "use-std"), no_std)]
 use postcard_rpc::{endpoints, topics, TopicDirection};
 
-pub mod dispenser;
-use crate::dispenser::*;
+
 
 pub mod coin_acceptor;
 use crate::coin_acceptor::*;
 
-pub mod cashless_device;
-use crate::cashless_device::*;
 
 pub mod chiller;
 use crate::chiller::*;
@@ -18,9 +15,9 @@ use postcard_schema::Schema;
 
 #[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
 pub struct VendCommand {
-    row: u8,
-    col: u8,
-    price: u16,  //Unscaled, GB pence 
+    pub row: u8,
+    pub col: u8,
+    pub price: u16,  //Unscaled, GB pence 
 }
 
 //These are the reasons a vend might fail
@@ -34,9 +31,10 @@ pub enum VendError {
     NoDropDetected, 
     InvalidAddress,
     Cancelled, 
+    PaymentFailed,
 }
-pub type VendResult = Result<(), VendError>;
 
+pub type VendResult = Result<(), VendError>;
 
 
 endpoints! {
@@ -50,7 +48,6 @@ endpoints! {
     | CancelVend              | ()               | VendResult           | "/vmc/cancelvend"    | //Cancel a vend that is in progress
 
     //There will be other ones so you can find out about the peripherals etc
-
 }
 
 topics! {
