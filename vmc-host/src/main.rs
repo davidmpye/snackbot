@@ -106,6 +106,7 @@ enum Event {
     ChangeState(AppState),
     VendSuccess,
     VendFailed,
+    VmcEvent(VmcResponse),
 }
 
 #[derive(Debug)]
@@ -344,6 +345,16 @@ impl App {
             AppState::Vending => {
                 //Only two events acceptable here - success or failed.
                 match event {
+                    //If there is a vmc comms failure, we will return to idle (should be via an error screen!)
+
+                    Event::VmcEvent(VmcResponse::VendResponse(result)) => {
+                        match result {
+                            Ok(_) => {}
+                            Err(e) => {
+                                //Need to think about what this means...
+                            },
+                        }
+                    }
                     Event::VendSuccess => {
                         //Send massage to cashless device to confirm vend successful, to end transaction
                       //  let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::VendSuccess(DispenserAddress { row: self.row_selected.unwrap(), col: self.col_selected.unwrap() })));
@@ -524,15 +535,11 @@ fn main() -> glib::ExitCode {
             loop {
                 match rx.recv().await {
                     Ok(event) => {
-                        match event {
-                      
-                            _ => {
-                                println!("Ignored an event");
-                            },
-                        }
+                        println!("Feeding VMC event into main event loop");
+                        let _ = tx.send(Event::VmcEvent(event)).await;
                     },
                     Err(e) => {
-                    
+                        println!("Receive error");
                     },
                 }
             }
