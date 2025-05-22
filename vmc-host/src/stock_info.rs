@@ -1,78 +1,109 @@
 use std::path::PathBuf;
-use crate::DispenserAddress;
 pub struct StockItem {
-    pub address: DispenserAddress,
+    pub row: char,
+    pub col: char,
     pub name: String,
     pub image_url: String,
     pub price: u16,
 }
 
-pub fn get_stock_item(address: DispenserAddress) -> Option<StockItem> {
-    match address {
-        DispenserAddress{row:'A',col:'0'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Scampi Fries"),
-                image_url: String::from("images/scampi.jpg"),
-                price: 90,
-            })
-        },
-        DispenserAddress{row:'A',col:'2'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Bacon Fries"),
-                image_url: String::from("images/baconfries.jpg"),
-                price: 90,
-            })
-        },
-        DispenserAddress{row:'A',col:'4'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Crinklies"),
-                image_url: String::from("images/crinklies.jpg"),
-                price: 100,
-            })
-        },        
-        DispenserAddress{row:'A',col:'6'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Monster Munch"),
-                image_url: String::from("images/monstermunch.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'B',col:'0'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Tangy Cheese Doritos"),
-                image_url: String::from("images/tangycheesedoritos.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'B',col:'2'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Chilli Doritos"),
-                image_url: String::from("images/chilliheatwavedoritos.jpg"),
-                price: 100,
-            })
-        },        
-        DispenserAddress{row:'B',col:'4'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Soba Noodles"),
-                image_url: String::from("./doritos.jpg"),
-                price: 150,
-            })
-        },        
-        DispenserAddress{row:'B',col:'6'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Super Noodles"),
-                image_url: String::from("./doritos.jpg"),
-                price: 130,
-            })
-        },
+pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
+    match row {
+        //Three spirals
+
+        'A' => {
+            match col {
+                '0' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Scampi Fries"),
+                        image_url: String::from("images/scampi.jpg"),
+                        price: 90,
+                    })
+                },
+                '2' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Bacon Fries"),
+                        image_url: String::from("images/baconfries.jpg"),
+                        price: 90,
+                    })
+                },
+                '4' => {
+                    Some(StockItem { 
+                                             row,
+                        col,
+                        name: String::from("Crinklies"),
+                        image_url: String::from("images/crinklies.jpg"),
+                        price: 100,
+                    })
+                },
+                '6' => {
+                    Some(StockItem { 
+                         row,
+                        col,
+                        name: String::from("Monster Munch"),
+                        image_url: String::from("images/monstermunch.jpg"),
+                        price: 100,
+                    })
+                },
+                _ => None,
+            }
+        }
+        'B' => {
+            match col {
+                '0' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Tangy Cheese Doritos"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 100,
+                    })
+                },
+                '2' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Chilli Doritos"),
+                        image_url: String::from("images/chilliheatwavedoritos.jpg"),
+                        price: 100,
+                    })
+                },
+                '4' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("Soba Noodles"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 150,
+                    })
+                },
+                '6' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("Super Noodles"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 130,
+                    })
+                },
+                _ => None,
+            }
+        }
+        'C' => {
+            None
+        }
+        //Cans
+        'E' => {
+            None
+        }
+        'F' => {
+            None
+        }
+        _ => None
+    }
+    /*
         DispenserAddress{row:'C',col:'0'} => {
             Some(StockItem { 
                 address,
@@ -192,6 +223,5 @@ pub fn get_stock_item(address: DispenserAddress) -> Option<StockItem> {
 
 
         _ => None,
-    }
-
+    } */
 }

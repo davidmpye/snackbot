@@ -93,7 +93,9 @@ pub async fn cashless_device_task() -> ! {
                                     let _ = device.end_session(bus).await;
                                 }
                                 PollEvent::Malfunction(_code) => {
-                                    error!("Received cashless device malfunction");
+                                    error!("Received cashless device malfunction, resetting device");
+                                    //Breaking the main loop will force a reinit
+                                    break 'main;
                                 }
                                 PollEvent::SessionCancelRequest => {
                                     debug!("Session cancel request received");
@@ -108,7 +110,7 @@ pub async fn cashless_device_task() -> ! {
                                     let _ = device.end_session(bus).await;
                                 }
                                 PollEvent::CmdOutOfSequence => {
-                                    error!("Cmd out of sequence, reinitialising device");
+                                    error!("Cmd out of sequence, resetting device");
                                     //Breaking the main loop will force a reinit
                                     break 'main;
                                 }

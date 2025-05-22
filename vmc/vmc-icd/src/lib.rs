@@ -32,6 +32,7 @@ pub enum VendError {
     InvalidAddress,
     Cancelled, 
     PaymentFailed,
+    CommsFault
 }
 
 pub type VendResult = Result<(), VendError>;

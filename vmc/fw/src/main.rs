@@ -65,8 +65,7 @@ use chiller_driver::chiller_task;
 
 use watchdog::watchdog_task;
 
-use vmc::vend_handler;
-
+use vmc::{vend_handler, force_dispense_handler, cancel_vend_handler};
 
 type AppDriver = usb::Driver<'static, USB>;
 type BufStorage = PacketBuffers<1024, 1024>;
@@ -104,11 +103,11 @@ define_dispatch! {
     endpoints: {
         list: ENDPOINT_LIST;
         | EndpointTy                | kind        | handler                       |
-        | ----------                | ----        | -------                       |
-   //     | ItemAvailable             | async       | item_available_handler        |
-        | Vend                      | spawn       | vend_handler                  |
-    //    | ForceDispense             | async       | force_dispense_handler        |
-     //   | CancelVend                | async       | cancel_vend_handler           |
+        | ----------                | ----        | -------                       |  
+        | Vend                      | spawn       | vend_handler                  |  //Handle the vend process, including collecting payment
+        | ForceDispense             | spawn       | force_dispense_handler        |  //Force dispense will try to dispense an item regardless of the initial 
+                                                                                     //dispenser state - NB NO PAYMENT HANDLING.
+     //   | CancelVend                | async       | cancel_vend_handler           |  //Cancel an in progress vend - not yet implemented
     };
 
     topics_in: {
