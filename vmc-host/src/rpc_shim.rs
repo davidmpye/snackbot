@@ -8,7 +8,7 @@ use async_channel::{Sender, Receiver};
 use crate::{VmcDriver};
 use crate::{LcdDriver, LcdCommand};
 
-use vmc_icd::{VendCommand, VendError, VendResult, VendProgressTopic, ChillerTopic, chiller::ChillerStatus};
+use vmc_icd::{VendCommand, VendError, VendResult, VendProgressTopic, VendProgress, ChillerTopic, chiller::ChillerStatus};
 
 pub enum VmcCommand {
     ItemAvailable(VendCommand),
@@ -19,6 +19,8 @@ pub enum VmcCommand {
 
 pub enum VmcResponse {
     VendResponse(VendResult),
+    VendAwaitingPayment,
+    VendDispensing,
 }
 
 //Spawn a tokio runtime instance for the postcard-rpc device handlers
@@ -54,8 +56,17 @@ pub(crate) fn spawn_vmc_driver(vmc_response_channel_tx:Sender<VmcResponse>, vmc_
                                 match val {
                                     Ok(msg) => {
                                         println!("Vend progress topic message received");
-                                        //Propagate message via comman
-                                        //let _ = vmc_response_channel_tx.send(VmcResponse::foo).await;
+                                        //Propagate message via command
+                                        match msg {
+                                            VendProgress::AwaitingPayment => {
+                                                println!("Awaiting payment");
+                                                let _ = vmc_response_channel_tx.send(VmcResponse::VendAwaitingPayment).await;
+                                            },
+                                            VendProgress::Dispensing => {
+                                                println!("Dispense in progress");
+                                                let _ = vmc_response_channel_tx.send(VmcResponse::VendDispensing).await;
+                                            }
+                                        }
                                     }
                                     Err(e) => {
                                         println!("Subscription error - reinitialising VMC connection");

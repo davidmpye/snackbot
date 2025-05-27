@@ -25,7 +25,7 @@ mod vmc_driver;
 use vmc_driver::VmcDriver;
 
 
-use vmc_icd::{VendCommand, VendResult};
+use vmc_icd::{VendCommand, VendResult, VendError};
 
 mod rpc_shim;
 use rpc_shim::{VmcCommand, VmcResponse};
@@ -112,9 +112,8 @@ enum AppState {
     Idle,
     MakeAnotherSelection,
     AwaitingConfirmation,
-    InVend,
-    Vending,
     AwaitingPayment,
+    Dispensing,
     VendSuccess,
     VendFailed,
 }
@@ -297,7 +296,6 @@ impl App {
 
                                 //The vmc will send us a series of events to keep us updated 
                                 self.state = AppState::AwaitingPayment;
-
                             }
                             '\x1b' => {
                                 //Cancel
@@ -313,47 +311,58 @@ impl App {
             }
             AppState::AwaitingPayment => {
                 match event {
-                    Event::Keypress(key) => {
-                        match key {
-                            '\x1b' => {
-                                //Cancel
-                                self.row_selected = None;
-                                self.col_selected = None;
-                                self.state = AppState::Idle;
-                                
-                                //Need to tell vmc to cancel
-                            },
-                            _=> {},
-                        }
+                    Event::Keypress('\x1b') => {
+                        //Cancel pressed
+                        self.row_selected = None;
+                        self.col_selected = None;
+                        self.state = AppState::Idle;
                     },
-                    //From here we might get a cancel
-                    Event::VmcEvent(response) => {
+                    Event::VmcEvent(VmcResponse::VendDispensing) => {
+                        //Move into the dispensing state
+                        self.state = AppState::Dispensing;
+                    }
+                    Event::VmcEvent(VmcResponse::VendResponse(response)) => {
                         match response {
-                            VmcResponse::VendResponse(resp) => {
-                                match resp {
-                                    Ok(_) => {
-                                        println!("Got vend OK at unexpected point while in AwaitingPayment");
-                                    },
-                                    Err(e) => {
-                                        //Go to idle
-                                        println!("Vend error response in reply to vend cmd");
-                                        self.state = AppState::Idle;    
-                                    },
-                                }
+                            Ok(_) => {
+                                println!("Error - should not have received vend success here");
+                                self.state = AppState::VendSuccess;
+                            }
+                            Err(e) => {
+                                 println!("Vend cancelled? - {:?}", e);
+                                self.state = AppState::MakeAnotherSelection;
                             }
                         }
                     }
                     _ => {
+                        //Fixme - should also handle a cancel from the vmc
                         println!("Other event - not handled");
                     }
                 }
-            }
-            AppState::Vending => {
-                //Only two events acceptable here - success or failed.
+            },
+            AppState::Dispensing => {
+                //Event here should be a vmc response, either success or failed.
+                match event {
+                    Event::VmcEvent(VmcResponse::VendResponse(result)) => {
+                        match result {
+                            Ok(_) => {
+                                println!("Dispense success");
+                                self.state = AppState::VendSuccess;
+                            },
+                            Err(e) => {
+                                println!("Vend failed - {:?}", e);
+                                self.state = AppState::VendFailed;
+                            }
+                        }   
+                    }
+                    _ =>  {
+                        println!("Ignored event in dispensing");
+                    }
+                }
 
-            }
-            _ => {}
-            
+            },
+            AppState::VendFailed | AppState::VendSuccess | AppState::MakeAnotherSelection => {
+                //Nothing to do here - these states are 'time limited' display screens
+            },
         }
         self.update_ui();
     }
@@ -449,7 +458,7 @@ impl App {
                     glib::ControlFlow::Break
                 });
             }
-            AppState::Vending => {
+            AppState::Dispensing => {
                  self.stack.set_visible_child(
                     &self.stack.child_by_name("vend_in_progress_box").expect("vend_in_progress_box missing from stack"));
             }
