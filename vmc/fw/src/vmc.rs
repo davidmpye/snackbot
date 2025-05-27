@@ -1,7 +1,7 @@
 use embassy_time::{Duration, Timer, with_timeout};
 use postcard_rpc::header::VarHeader;
 
-use vmc_icd::{Vend, VendCommand, VendError, VendResult};
+use vmc_icd::{Vend, VendCommand, VendError, VendResult, VendProgress, VendProgressTopic};
 
 use crate::motor_driver::DispenserAddress;
 
@@ -48,9 +48,13 @@ pub async fn vend_handler(
                 match driver.is_dispensable(dispenser) {
                     Ok(()) => {
                         //Dispenser exists, now we collect payment
+                        let _ = sender.publish::<VendProgressTopic>(header.seq_no, &VendProgress::AwaitingPayment).await;
+
                         match collect_payment(dispenser.address, cmd.price).await {
                             Ok(payment) => {
-                                //Now dispense item
+                                //Payment OK, notify topic we are dispensing item
+                                let _ = sender.publish::<VendProgressTopic>(header.seq_no, &VendProgress::Dispensing).await;
+                                //Dispense item
                                 match driver.dispense(dispenser, false).await {
                                     Ok(_) => {
                                         //Notify the payment subsystem
