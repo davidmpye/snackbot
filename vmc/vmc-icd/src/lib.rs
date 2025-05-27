@@ -72,6 +72,6 @@ topics! {
     direction = TopicDirection::ToClient;
     | TopicTy              | MessageTy             | Path                             | Cfg                           |
     | -------              | ---------             | ----                             | ---                           |  
-    | Chiller              | ChillerStatus         | "/vmc/status/chiller"            |                               | 
+    | ChillerTopic         | ChillerStatus         | "/vmc/status/chiller"            |                               | 
     | VendProgressTopic    | VendProgress          | "/vmc/vend_progress"             |                               |
 }

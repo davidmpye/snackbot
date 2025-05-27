@@ -104,8 +104,6 @@ enum Event {
     CoinInserted(u16),
     Timeout_Poll_Event,
     ChangeState(AppState),
-    VendSuccess,
-    VendFailed,
     VmcEvent(VmcResponse),
 }
 
@@ -352,30 +350,7 @@ impl App {
             }
             AppState::Vending => {
                 //Only two events acceptable here - success or failed.
-                match event {
-                    //If there is a vmc comms failure, we will return to idle (should be via an error screen!)
 
-                    Event::VmcEvent(VmcResponse::VendResponse(result)) => {
-                        match result {
-                            Ok(_) => {}
-                            Err(e) => {
-                                //Need to think about what this means...
-                            },
-                        }
-                    }
-                    Event::VendSuccess => {
-                        //Send massage to cashless device to confirm vend successful, to end transaction
-                      //  let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::VendSuccess(DispenserAddress { row: self.row_selected.unwrap(), col: self.col_selected.unwrap() })));
-                        self.state = AppState::VendSuccess;              
-                    },
-                    Event::VendFailed => {
-                        //Cancel the cashless device transaction with vend failed (not sure what it will say if it didnt handle the transaction)
-                        //let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::VendFailed));
-                        self.state = AppState::VendFailed;                   
-                    },
-                    //Fixme - need a timeout if vmc has gone wrong
-                    _ => {},
-                }
             }
             _ => {}
             

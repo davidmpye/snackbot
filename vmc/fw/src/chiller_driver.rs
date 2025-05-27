@@ -102,7 +102,7 @@ pub async fn chiller_task(
                         current_temperature : temp as f32,
                         setpoint: setpoint,
                     };
-                    let _ = postcard_sender.publish::<Chiller>(msg_seq.into(), &c).await;
+                    let _ = postcard_sender.publish::<ChillerTopic>(msg_seq.into(), &c).await;
                     msg_seq = msg_seq.wrapping_add(1);
                 }
             },

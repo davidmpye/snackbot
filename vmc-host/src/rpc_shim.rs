@@ -8,7 +8,7 @@ use async_channel::{Sender, Receiver};
 use crate::{VmcDriver};
 use crate::{LcdDriver, LcdCommand};
 
-use vmc_icd::{VendCommand, VendError, VendResult};
+use vmc_icd::{VendCommand, VendError, VendResult, VendProgressTopic, ChillerTopic, chiller::ChillerStatus};
 
 pub enum VmcCommand {
     ItemAvailable(VendCommand),
@@ -29,19 +29,6 @@ fn runtime() -> &'static Runtime {
     })
 }
 
-async fn connect_to_vmc() -> Option<VmcDriver> {
-    match VmcDriver::new() {
-        Ok(driver) => {
-            println!("VMC driver connected OK");
-            Some(driver)
-        }
-        Err(e) => {
-            println!("VMC driver connection failed - {}", e);
-                None
-        }
-    }
-}
-
 pub(crate) fn spawn_vmc_driver(vmc_response_channel_tx:Sender<VmcResponse>, vmc_command_channel_rx:Receiver<VmcCommand>) {
      //Spawn off the VMC task on the tokio runtime
     runtime().spawn(clone!(
@@ -51,64 +38,74 @@ pub(crate) fn spawn_vmc_driver(vmc_response_channel_tx:Sender<VmcResponse>, vmc_
         vmc_command_channel_rx,
         async move {
 
-            let mut vmc: Option<VmcDriver> = None;
+        'outer: loop {
+            match VmcDriver::new() {
+                Ok(mut vmc) => {
+                    println!("VMC connection successful");
+                    //Subscribe to the topics
+                    let mut vend_progress_topic = vmc.driver.subscribe_multi::<VendProgressTopic>(8).await.unwrap();
+                    let mut chiller_topic = vmc.driver.subscribe_multi::<ChillerTopic>(8).await.unwrap();
 
-            'outer: loop {
-                if vmc.is_none() {
-                    println!("Attempting VMC connection");
-                    vmc = connect_to_vmc().await;
-                }
-                //Await a message
-          //      let mut cashless_topic = vmc.driver.subscribe_multi::<CashlessEventTopic>(8).await.unwrap();
-            //    let mut event_topic = vmc.driver.subscribe_multi::<EventTopic>(8).await.unwrap();
-              //  let mut coin_inserted_topic = vmc.driver.subscribe_multi::<vmc_icd::CoinInsertedTopic>(8).await.unwrap();
-                'recvpoll: loop {
-                    tokio::select! {
-                        /*
-                        val = cashless_topic.recv() => {
-                            if let Ok(event) = val {
-                                println!("Got a cashless event");
-                                let _ = vmc_response_channel_tx.send(VmcResponse::CashlessEvent(event)).await;
+                    'recvpoll: loop {
+                        //Driver sits here in a select!, waiting for a topic from the VMC, or a command from vmc-host
+                        tokio::select! {
+                            //Vend progress topic message arrived
+                            val = vend_progress_topic.recv() => {
+                                match val {
+                                    Ok(msg) => {
+                                        println!("Vend progress topic message received");
+                                        //Propagate message via comman
+                                        //let _ = vmc_response_channel_tx.send(VmcResponse::foo).await;
+                                    }
+                                    Err(e) => {
+                                        println!("Subscription error - reinitialising VMC connection");
+                                        break 'recvpoll;
+                                    }
+                                }
+                            },
+                            val = chiller_topic.recv() => {
+                                match val {
+                                    Ok(chiller_status) => {
+                                        println!("Received chiller status: Temp {:.2}'C, Setpoint {:.2}'C, chiller_on: {}",
+                                            chiller_status.current_temperature, chiller_status.setpoint, chiller_status.on);
+                                        //NB need to propagate this to event loop
+                                    }
+                                    Err(e) => {
+                                        println!("Subscription error - reinitialising VMC connection");
+                                        break 'recvpoll;
+                                    }
+                                }
                             }
-                        }*/
-                        val = vmc_command_channel_rx.recv() => {
-                            if let Ok(cmd) = val {
-                                //Check we are connected to vmc
-                                if let Some(ref mut v) = vmc {
+                            val = vmc_command_channel_rx.recv() => {
+                                //Received command from vmc-host
+                                if let Ok(cmd) = val {
                                     println!("Processing cmd");
                                     match cmd {
                                         VmcCommand::ItemAvailable(cmd) =>{
-                                            let res = v.item_available(cmd).await;
+                                            let res = vmc.item_available(cmd).await;
                                             let _ =  vmc_response_channel_tx.send(VmcResponse::VendResponse(res)).await;
                                         },  
-                                        VmcCommand::Vend(cmd) =>
-                                            {
-                                            let res = v.vend(cmd).await;
+                                        VmcCommand::Vend(cmd) => {
+                                            let res = vmc.vend(cmd).await;
                                             let _ =  vmc_response_channel_tx.send(VmcResponse::VendResponse(res)).await;
                                         },
                                         VmcCommand::ForceDispense(cmd) => {
-                                            let res = v.force_dispense(cmd).await;
+                                            let res = vmc.force_dispense(cmd).await;
                                             let _ =  vmc_response_channel_tx.send(VmcResponse::VendResponse(res)).await;            
                                         }         
                                     }
                                 }
-                                else {
-                                  println!("Err - no vmc conn");
-                                  let _ =  vmc_response_channel_tx.send(VmcResponse::VendResponse(Err(VendError::CommsFault))).await;  
-                                  //This will cause it to try to reinitialise          
-                                  break 'recvpoll;
-                                }
-
-
-                               
-                            }  
-                            else {
-                                println!("VMC comms err - will attempt to reconnect");
-                                break 'recvpoll;
                             }
-                        } 
+                        }   
                     }
                 }
+                Err(e)=> {
+                    println!("Vmc connection failure - will retry in 1 sec");
+                    sleep(Duration::from_secs(1)).await;
+                }
+            }
+
+
             }
         }
     ));
