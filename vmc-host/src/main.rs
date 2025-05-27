@@ -24,8 +24,7 @@ use lcd_driver::{LcdCommand, LcdDriver};
 mod vmc_driver;
 use vmc_driver::VmcDriver;
 
-
-use vmc_icd::{VendCommand, VendResult, VendError};
+use vmc_icd::{VendCommand, VendError, VendResult};
 
 mod rpc_shim;
 use rpc_shim::{VmcCommand, VmcResponse};
@@ -76,14 +75,14 @@ fn keypress_listener(sender: Sender<Event>) -> gtk4::EventControllerKey {
             gdk4::Key::_9 => '9',
             _ => ' ',
         };
-        
+
         if c.is_ascii_alphanumeric() || c == '\n' || c == '\x1B' {
             //Beep for user feedback
             match gdk4::Display::default() {
                 Some(display) => {
                     display.beep();
                 }
-                None => {},
+                None => {}
             }
             match sender.send_blocking(Event::Keypress(c)) {
                 Ok(()) => {}
@@ -161,7 +160,10 @@ impl App {
         stack.add_named(&make_selection_box, Some("make_selection_box"));
         stack.add_named(&confirm_item_box, Some("confirm_item_box"));
         stack.add_named(&make_payment_box, Some("make_payment_box"));
-        stack.add_named(&make_another_selection_box, Some("make_another_selection_box"));
+        stack.add_named(
+            &make_another_selection_box,
+            Some("make_another_selection_box"),
+        );
         stack.add_named(&vend_in_progress_box, Some("vend_in_progress_box"));
         stack.add_named(&vend_ok_box, Some("vend_ok_box"));
         stack.add_named(&vend_failed_box, Some("vend_failed_box"));
@@ -178,7 +180,10 @@ impl App {
 
         window.present();
 
-        let _ = lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
+        let _ = lcd_channel.send_blocking(LcdCommand::SetText(
+            String::from(IDLE_MESSAGE_L1),
+            String::from(IDLE_MESSAGE_L2),
+        ));
 
         Self {
             state: AppState::Idle,
@@ -205,7 +210,6 @@ impl App {
     pub fn handle_event(&mut self, event: Event) {
         //Handle timeout events separately from main state machine
 
-        
         match event {
             Event::Timeout_Poll_Event => {
                 if !matches!(self.state, AppState::Idle) {
@@ -214,8 +218,7 @@ impl App {
                         self.state = AppState::Idle;
                         self.seconds_since_last_event = 0;
                         self.update_ui();
-                    }
-                    else {
+                    } else {
                         println!("State is {:?}", self.state);
                         self.seconds_since_last_event += 1;
                     }
@@ -277,8 +280,8 @@ impl App {
                                 //Find the item and set the balance
                                 match get_stock_item(
                                     self.row_selected.unwrap(),
-                                    self.col_selected.unwrap())
-                                {
+                                    self.col_selected.unwrap(),
+                                ) {
                                     Some(item) => {
                                         self.amount_due = item.price;
                                     }
@@ -289,19 +292,21 @@ impl App {
                                 //Tell VMC to begin the process of vending - it will handle payment also
                                 let cmd = VendCommand {
                                     row: self.row_selected.unwrap() as u8,
-                                    col : self.col_selected.unwrap() as u8,
+                                    col: self.col_selected.unwrap() as u8,
                                     price: self.amount_due,
                                 };
-                                let _ = self.vmc_command_channel.send_blocking(VmcCommand::Vend(cmd));
+                                let _ = self
+                                    .vmc_command_channel
+                                    .send_blocking(VmcCommand::Vend(cmd));
 
-                                //The vmc will send us a series of events to keep us updated 
+                                //The vmc will send us a series of events to keep us updated
                                 self.state = AppState::AwaitingPayment;
                             }
                             '\x1b' => {
                                 //Cancel
                                 self.row_selected = None;
                                 self.col_selected = None;
-                                self.state = AppState::Idle;                   
+                                self.state = AppState::Idle;
                             }
                             _ => {}
                         }
@@ -316,53 +321,48 @@ impl App {
                         self.row_selected = None;
                         self.col_selected = None;
                         self.state = AppState::Idle;
-                    },
+                    }
                     Event::VmcEvent(VmcResponse::VendDispensing) => {
                         //Move into the dispensing state
                         self.state = AppState::Dispensing;
                     }
-                    Event::VmcEvent(VmcResponse::VendResponse(response)) => {
-                        match response {
-                            Ok(_) => {
-                                println!("Error - should not have received vend success here");
-                                self.state = AppState::VendSuccess;
-                            }
-                            Err(e) => {
-                                 println!("Vend cancelled? - {:?}", e);
-                                self.state = AppState::MakeAnotherSelection;
-                            }
+                    Event::VmcEvent(VmcResponse::VendResponse(response)) => match response {
+                        Ok(_) => {
+                            println!("Error - should not have received vend success here");
+                            self.state = AppState::VendSuccess;
                         }
-                    }
+                        Err(e) => {
+                            println!("Vend cancelled? - {:?}", e);
+                            self.state = AppState::MakeAnotherSelection;
+                        }
+                    },
                     _ => {
                         //Fixme - should also handle a cancel from the vmc
                         println!("Other event - not handled");
                     }
                 }
-            },
+            }
             AppState::Dispensing => {
                 //Event here should be a vmc response, either success or failed.
                 match event {
-                    Event::VmcEvent(VmcResponse::VendResponse(result)) => {
-                        match result {
-                            Ok(_) => {
-                                println!("Dispense success");
-                                self.state = AppState::VendSuccess;
-                            },
-                            Err(e) => {
-                                println!("Vend failed - {:?}", e);
-                                self.state = AppState::VendFailed;
-                            }
-                        }   
-                    }
-                    _ =>  {
+                    Event::VmcEvent(VmcResponse::VendResponse(result)) => match result {
+                        Ok(_) => {
+                            println!("Dispense success");
+                            self.state = AppState::VendSuccess;
+                        }
+                        Err(e) => {
+                            println!("Vend failed - {:?}", e);
+                            self.state = AppState::VendFailed;
+                        }
+                    },
+                    _ => {
                         println!("Ignored event in dispensing");
                     }
                 }
-
-            },
+            }
             AppState::VendFailed | AppState::VendSuccess | AppState::MakeAnotherSelection => {
                 //Nothing to do here - these states are 'time limited' display screens
-            },
+            }
         }
         self.update_ui();
     }
@@ -379,8 +379,10 @@ impl App {
         //Display appropriate state
         match self.state {
             AppState::Idle => {
-                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1),
-                    String::from(IDLE_MESSAGE_L2)));
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(
+                    String::from(IDLE_MESSAGE_L1),
+                    String::from(IDLE_MESSAGE_L2),
+                ));
 
                 //In this state, we should be showing the select item widgetstack 'page'
                 self.stack.set_visible_child(
@@ -404,12 +406,13 @@ impl App {
                     }
                 };
                 //Display idle message
-                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(IDLE_MESSAGE_L1), String::from(IDLE_MESSAGE_L2)));
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(
+                    String::from(IDLE_MESSAGE_L1),
+                    String::from(IDLE_MESSAGE_L2),
+                ));
             }
             AppState::AwaitingConfirmation => {
-                match get_stock_item(                   self.row_selected.unwrap(),
-                    self.col_selected.unwrap(),
-                ) {
+                match get_stock_item(self.row_selected.unwrap(), self.col_selected.unwrap()) {
                     Some(item) => {
                         self.confirm_item_box.set_name(item.name);
                         self.confirm_item_box.set_image(item.image_url);
@@ -423,6 +426,7 @@ impl App {
                     }
                     None => {
                         //Invalid, should say so.
+                        println!("Invalid item requested from stock");
                         self.row_selected = None;
                         self.col_selected = None;
                         self.state = AppState::MakeAnotherSelection;
@@ -431,11 +435,12 @@ impl App {
                 }
             }
             AppState::AwaitingPayment => {
-
                 let balance_due = self.amount_due - self.credit;
-                
-                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(String::from(PAY_MESSAGE_L1), 
-                format!("{}.{:02}", balance_due/100, balance_due%100)));
+
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(
+                    String::from(PAY_MESSAGE_L1),
+                    format!("{}.{:02}", balance_due / 100, balance_due % 100),
+                ));
 
                 self.stack.set_visible_child(
                     &self
@@ -459,28 +464,40 @@ impl App {
                 });
             }
             AppState::Dispensing => {
-                 self.stack.set_visible_child(
-                    &self.stack.child_by_name("vend_in_progress_box").expect("vend_in_progress_box missing from stack"));
+                self.stack.set_visible_child(
+                    &self
+                        .stack
+                        .child_by_name("vend_in_progress_box")
+                        .expect("vend_in_progress_box missing from stack"),
+                );
             }
             AppState::VendSuccess => {
                 self.stack.set_visible_child(
-                    &self.stack.child_by_name("vend_ok_box").expect("Vendsuccess missing from stack"));
+                    &self
+                        .stack
+                        .child_by_name("vend_ok_box")
+                        .expect("Vendsuccess missing from stack"),
+                );
                 //Queue a message to leave this state after 3 seconds
                 let ch = self.event_channel_tx.clone();
                 glib::timeout_add_seconds(2, move || {
                     let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
                     glib::ControlFlow::Break
-                }); 
+                });
             }
             AppState::VendFailed => {
                 self.stack.set_visible_child(
-                    &self.stack.child_by_name("vend_failed_box").expect("Vendfailed missing from stack"));
+                    &self
+                        .stack
+                        .child_by_name("vend_failed_box")
+                        .expect("Vendfailed missing from stack"),
+                );
                 //Queue a message to leave this state after 3 seconds
                 let ch = self.event_channel_tx.clone();
                 glib::timeout_add_seconds(2, move || {
                     let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
                     glib::ControlFlow::Break
-                }); 
+                });
             }
             _ => {}
         }
@@ -519,20 +536,20 @@ fn main() -> glib::ExitCode {
         glib::MainContext::default().spawn_local(async move {
             app.main_loop().await;
         });
-        
+
         //Spawn a task to receive events from the VMC response channel, and repost them onto the app's main event loop
         let rx = vmc_response_channel_rx.clone();
         let tx = event_channel_tx.clone();
-        glib::MainContext::default().spawn_local( async move {
+        glib::MainContext::default().spawn_local(async move {
             loop {
                 match rx.recv().await {
                     Ok(event) => {
                         println!("Feeding VMC event into main event loop");
                         let _ = tx.send(Event::VmcEvent(event)).await;
-                    },
+                    }
                     Err(e) => {
                         println!("Receive error");
-                    },
+                    }
                 }
             }
         });
