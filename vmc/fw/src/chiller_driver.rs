@@ -30,11 +30,11 @@ const THERMISTOR_PULLUP_VAL_OHMS:u64 = 10000;
 const MIN_TEMP:f64 = -10.0;
 const MAX_TEMP:f64 = 40.0;
 
-//For a 3.3k thermistor (https://www.bapihvac.com/wp-content/uploads/2010/11/Thermistor_3.3K.pdf),
+//For a 2.2k thermistor (https://www.bapihvac.com/wp-content/uploads/2010/11/Thermistor_2.2K.pdf),
 //calculated using https://rusefi.com/Steinhart-Hart.html
-const THERMISTOR_A_VAL:f64 = 1.3811057615602958e-3;
-const THERMISTOR_B_VAL:f64 = 2.370102475713365e-4;
-const THERMISTOR_C_VAL:f64 = 9.879312896211082e-8;
+const THERMISTOR_A_VAL:f64 = 0.001600801715219524;
+const THERMISTOR_B_VAL:f64 = 0.00021348236184858877;
+const THERMISTOR_C_VAL:f64 = 2.2890083787897867e-7;
 
 #[embassy_executor::task]
 pub async fn chiller_task(
