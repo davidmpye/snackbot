@@ -108,7 +108,7 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
         //Cans
         'E' => {
             match col {
-                '0' => {
+                '1' => {
                     Some(StockItem { 
                         row,col,
                         name: String::from("Cream Soda"),
@@ -116,30 +116,15 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
                         price: 90,
                     })
                 },
-                '1' => {
-                    Some(StockItem { 
-                        row,col,
-                        name: String::from("Super Noodles"),
-                        image_url: String::from("./doritos.jpg"),
-                        price: 90,
-                    })
-                },
                 '2' => {
                     Some(StockItem { 
                         row,col,
-                        name: String::from("Super Noodles"),
+                        name: String::from("Dr Pepper"),
                         image_url: String::from("./doritos.jpg"),
                         price: 90,
                     })
                 },
-                '3' => {
-                    Some(StockItem { 
-                        row,col,
-                        name: String::from("Super Noodles"),
-                        image_url: String::from("./doritos.jpg"),
-                        price: 90,
-                    })
-                },
+
                 _ => None
             }
         }

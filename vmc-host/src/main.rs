@@ -11,6 +11,8 @@ use crate::make_payment_box::MakePaymentBox;
 mod make_another_selection_box;
 use crate::make_another_selection_box::MakeAnotherSelectionBox;
 
+
+
 mod vend_in_progress_box;
 use vend_in_progress_box::VendInProgressBox;
 mod vend_ok_box;
@@ -276,7 +278,6 @@ impl App {
                         match key {
                             '\n' => {
                                 //This is TICK - now confirmed, ask the VMC to do the vend operation
-
                                 //Find the item and set the balance
                                 match get_stock_item(
                                     self.row_selected.unwrap(),
@@ -391,20 +392,10 @@ impl App {
                         .child_by_name("make_selection_box")
                         .expect("Error: Make selection box is missing from stack"),
                 );
-                let row_char = {
-                    if self.row_selected.is_none() {
-                        '_'
-                    } else {
-                        self.row_selected.unwrap()
-                    }
-                };
-                let col_char = {
-                    if self.col_selected.is_none() {
-                        '_'
-                    } else {
-                        self.col_selected.unwrap()
-                    }
-                };
+
+                self.make_selection_box.set_row(self.row_selected);
+                self.make_selection_box.set_col(self.col_selected);
+                
                 //Display idle message
                 let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(
                     String::from(IDLE_MESSAGE_L1),
