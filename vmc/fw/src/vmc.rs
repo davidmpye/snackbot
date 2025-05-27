@@ -38,7 +38,7 @@ pub async fn vend_handler(
     sender: Sender<AppTx>,
 ) {
     {
-        debug!("Starting vend handler");
+        debug!("Starting vend handler in response to vend request - address {}{}", cmd.row, cmd.col);
         let mut r = DISPENSER_DRIVER.lock().await;
         let driver = r.as_mut().expect("Motor driver must be stored in mutex");
         
