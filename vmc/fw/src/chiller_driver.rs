@@ -13,7 +13,7 @@ use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_rp::usb::Driver as UsbDriver;
 
 use vmc_icd::chiller::ChillerStatus;
-use vmc_icd::Chiller;
+use vmc_icd::ChillerTopic;
 
 use crate::DISPENSER_DRIVER;
 
