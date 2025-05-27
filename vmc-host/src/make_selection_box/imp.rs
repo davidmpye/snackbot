@@ -33,10 +33,11 @@ impl ObjectImpl for MakeSelectionBox {
         self.col.set_use_markup(true);
         self.col.set_label("<span font=\"Arial Rounded MT 80\">_</span>");
         
+        self.obj().set_homogeneous(true);
         itembox.append(&self.row);
         itembox.append(&self.col);
         itembox.set_baseline_position(gtk4::BaselinePosition::Center);
-
+        itembox.set_homogeneous(true);
         self.obj().set_spacing(50);
         self.obj().append(
             &Label::builder()
