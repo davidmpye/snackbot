@@ -24,12 +24,12 @@ use lcd_driver::{LcdCommand, LcdDriver};
 mod vmc_driver;
 use vmc_driver::VmcDriver;
 
-use rpc_shim::{VmcCommand, VmcResponse};
 
-
-use vmc_icd::VendCommand;
+use vmc_icd::{VendCommand, VendResult};
 
 mod rpc_shim;
+use rpc_shim::{VmcCommand, VmcResponse};
+
 use rpc_shim::{spawn_lcd_driver, spawn_vmc_driver};
 
 const APP_ID: &str = "uk.org.makerspace.snackbot";
@@ -275,8 +275,7 @@ impl App {
                     Event::Keypress(key) => {
                         match key {
                             '\n' => {
-                                //Into payment sate
-                                self.state = AppState::AwaitingPayment;
+                                //This is TICK - now confirmed, ask the VMC to do the vend operation
 
                                 //Find the item and set the balance
                                 match get_stock_item(
@@ -290,13 +289,17 @@ impl App {
                                         println!("Error - item no longer found - shouldnt happen!");
                                     }
                                 }
-                                //Tell VMC to begin vend
+                                //Tell VMC to begin the process of vending - it will handle payment also
                                 let cmd = VendCommand {
                                     row: self.row_selected.unwrap() as u8,
                                     col : self.row_selected.unwrap() as u8,
                                     price: self.amount_due,
                                 };
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::Vend(cmd));
+
+                                //The vmc will send us a series of events to keep us updated 
+                                self.state = AppState::AwaitingPayment;
+
                             }
                             '\x1b' => {
                                 //Cancel
@@ -325,18 +328,23 @@ impl App {
                             _=> {},
                         }
                     },
-                    Event::EscrowPressed => {
-                        println!("Got escrow");
-                        //Also acts as cancel.
-                         //Cancel
-                         self.row_selected = None;
-                         self.col_selected = None;
-                         self.state = AppState::Idle;
-                         self.amount_due = 0;
-                         //Cancel the cashless transaction
-                         //let _ = self.vmc_command_channel.send_blocking(VmcCommand::CashlessCmd(CashlessDeviceCommand::CancelTransaction));
-                         //Need to refund coins if any inserted
-                    },
+                    //From here we might get a cancel
+                    Event::VmcEvent(response) => {
+                        match response {
+                            VmcResponse::VendResponse(resp) => {
+                                match resp {
+                                    Ok(_) => {
+                                        println!("Got vend OK at unexpected point while in AwaitingPayment");
+                                    },
+                                    Err(e) => {
+                                        //Go to idle
+                                        println!("Vend error response in reply to vend cmd");
+                                        self.state = AppState::Idle;    
+                                    },
+                                }
+                            }
+                        }
+                    }
                     _ => {
                         println!("Other event - not handled");
                     }

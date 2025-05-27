@@ -38,6 +38,15 @@ pub enum VendError {
 pub type VendResult = Result<(), VendError>;
 
 
+//These are sent as topics during the Vend Process to give the UI a chance to update
+//So, when you call Vend, as the VMC progresses through taking payment
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
+pub enum VendProgress {
+    AwaitingPayment,
+    Dispensing,
+    //No need for a Complete, because when the Vend endpoint completes, it will return a VendResult to you
+}
+
 endpoints! {
     list = ENDPOINT_LIST;
     omit_std = true;
@@ -64,4 +73,5 @@ topics! {
     | TopicTy              | MessageTy             | Path                             | Cfg                           |
     | -------              | ---------             | ----                             | ---                           |  
     | Chiller              | ChillerStatus         | "/vmc/status/chiller"            |                               | 
+    | VendProgressTopic    | VendProgress          | "/vmc/vend_progress"             |                               |
 }
