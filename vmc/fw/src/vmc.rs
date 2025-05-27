@@ -70,7 +70,7 @@ pub async fn vend_handler(
                                         }
                                     },
                                     Err(e) => {
-                                        debug!("Unable to vend - error occurred")
+                                        debug!("Unable to vend - error occurred");
                                         //Notify the payment subsystem to do refund
                                         vend_failed(dispenser.address, cmd.price).await;
                                         match sender.reply::<Vend>(header.seq_no, &Err(e)).await {
