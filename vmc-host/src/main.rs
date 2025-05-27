@@ -292,7 +292,7 @@ impl App {
                                 //Tell VMC to begin the process of vending - it will handle payment also
                                 let cmd = VendCommand {
                                     row: self.row_selected.unwrap() as u8,
-                                    col : self.row_selected.unwrap() as u8,
+                                    col : self.col_selected.unwrap() as u8,
                                     price: self.amount_due,
                                 };
                                 let _ = self.vmc_command_channel.send_blocking(VmcCommand::Vend(cmd));
