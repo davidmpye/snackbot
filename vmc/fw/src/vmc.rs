@@ -38,25 +38,30 @@ pub async fn vend_handler(
     sender: Sender<AppTx>,
 ) {
     {
+        debug!("Starting vend handler");
         let mut r = DISPENSER_DRIVER.lock().await;
         let driver = r.as_mut().expect("Motor driver must be stored in mutex");
         
         match driver.get_dispenser(DispenserAddress { row: cmd.row as char, col:cmd.col as char}).await {
 
             Some(dispenser) => {       
+                debug!("Obtained dispenser");
                 //Check the dispenser is dispensable - if not, we'll return that now.
                 match driver.is_dispensable(dispenser) {
                     Ok(()) => {
+                        debug!("Dispenser is dispensable, moving to collect payment");
                         //Dispenser exists, now we collect payment
                         let _ = sender.publish::<VendProgressTopic>(header.seq_no, &VendProgress::AwaitingPayment).await;
 
                         match collect_payment(dispenser.address, cmd.price).await {
                             Ok(payment) => {
+                                debug!("Payment accepted, dispensing");
                                 //Payment OK, notify topic we are dispensing item
                                 let _ = sender.publish::<VendProgressTopic>(header.seq_no, &VendProgress::Dispensing).await;
                                 //Dispense item
                                 match driver.dispense(dispenser, false).await {
                                     Ok(_) => {
+                                        debug!("Dispensed successfully");
                                         //Notify the payment subsystem
                                         vend_success(dispenser.address, cmd.price).await;   
                                         match sender.reply::<Vend>(header.seq_no, &Ok(())).await {
@@ -65,6 +70,7 @@ pub async fn vend_handler(
                                         }
                                     },
                                     Err(e) => {
+                                        debug!("Unable to vend - error occurred")
                                         //Notify the payment subsystem to do refund
                                         vend_failed(dispenser.address, cmd.price).await;
                                         match sender.reply::<Vend>(header.seq_no, &Err(e)).await {
@@ -75,6 +81,7 @@ pub async fn vend_handler(
                                 }
                             },
                             Err (e) => {
+                                debug!("Payment failed");
                                 match sender.reply::<Vend>(header.seq_no, &Err(VendError::PaymentFailed)).await {
                                     Ok(_) => debug!("Payment reply sent OK"),
                                     Err(_) => error!("Payment reply did not send")
@@ -84,6 +91,7 @@ pub async fn vend_handler(
                         }       
                     }
                     Err(e)=> {
+                        debug!("Dispenser is not vendable");
                         match sender.reply::<Vend>(header.seq_no, &Err(e)).await {
                             Ok(_) => debug!("Not vendable reply sent OK"),
                             Err(_) => error!("Not vendable reply did not send")
@@ -94,6 +102,7 @@ pub async fn vend_handler(
                 }
             },
             None => {
+                debug!("Invalid dispenser address requested");
                 //There is no dispenser at this address - you've asked for an invalid address
                 match sender.reply::<Vend>(header.seq_no, &Err(VendError::InvalidAddress)).await {
                     Ok(_) => debug!("Invalid address reply sent OK"),
@@ -106,6 +115,7 @@ pub async fn vend_handler(
 }
 
 async fn collect_payment(addr: DispenserAddress, amount:u16) -> Result<PaymentType, PaymentError> {
+    debug!("Sending cashless command signal");
     CASHLESS_COMMAND_SIGNAL.signal(CashlessDeviceCommand::StartTransaction(amount, addr.row as u8, addr.col as u8));
     CASHLESS_RESPONSE_SIGNAL.reset();
     //Now yield
