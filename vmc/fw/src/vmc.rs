@@ -59,25 +59,21 @@ pub async fn vend_handler(
                                 //Payment OK, notify topic we are dispensing item
                                 let _ = sender.publish::<VendProgressTopic>(header.seq_no, &VendProgress::Dispensing).await;
                                 //Dispense item
-                                match driver.dispense(dispenser, false).await {
+                                let dispense_result = driver.dispense(dispenser, false).await;
+                                match dispense_result {
                                     Ok(_) => {
                                         debug!("Dispensed successfully");
-                                        //Notify the payment subsystem
                                         vend_success(dispenser.address, cmd.price).await;   
-                                        match sender.reply::<Vend>(header.seq_no, &Ok(())).await {
-                                            Ok(_) => debug!("Vend success reply sent OK"),
-                                            Err(_) => error!("Vend success reply did not send")
-                                        }
                                     },
                                     Err(e) => {
-                                        debug!("Unable to vend - error occurred");
-                                        //Notify the payment subsystem to do refund
+                                        error!("Dispense error occurred");
                                         vend_failed(dispenser.address, cmd.price).await;
-                                        match sender.reply::<Vend>(header.seq_no, &Err(e)).await {
-                                            Ok(_) => debug!("Vend failed reply sent OK"),
-                                            Err(_) => error!("Vend failed reply did not send")
-                                        }
-                                    },   
+                                    },
+                                }
+                                //Return the result to sender
+                                match sender.reply::<Vend>(header.seq_no, &dispense_result).await {
+                                    Ok(_) => debug!("Vend success reply sent OK"),
+                                    Err(_) => error!("Vend success reply did not send")
                                 }
                             },
                             Err (e) => {
@@ -167,19 +163,10 @@ pub async fn force_dispense_handler(
     match driver.get_dispenser(DispenserAddress { row: cmd.row as char, col:cmd.col as char}).await {
         Some(dispenser) => {       
             //NB we are *skipping* the prevend checks
-            match driver.dispense(dispenser, true).await {
-                Ok(_) => {
-                    match sender.reply::<Vend>(header.seq_no, &Ok(())).await {
-                        Ok(_) => debug!("Force dispense success reply sent OK"),
-                        Err(_) => error!("Force dispense success reply did not send")
-                    }
-                },
-                Err(e) => {
-                    match sender.reply::<Vend>(header.seq_no, &Err(e)).await {
-                        Ok(_) => debug!("Vend failed reply sent OK"),
-                        Err(_) => error!("Vend failed reply did not send")
-                    }
-                },
+            let dispense_result = driver.dispense(dispenser, true).await;                
+            match sender.reply::<Vend>(header.seq_no, &dispense_result).await {
+                Ok(_) => debug!("Vend dispense reply sent OK"),
+                Err(_) => error!("Vend dispense reply did not send"),
             }
         }
         None => {
@@ -191,6 +178,20 @@ pub async fn force_dispense_handler(
         }    
     }      
 }
+
+
+#[embassy_executor::task]
+pub async fn item_available_handler(
+    _context: SpawnCtx,
+    header: VarHeader,
+    cmd: VendCommand,
+    sender: Sender<AppTx>,
+) {
+    let mut r = DISPENSER_DRIVER.lock().await;
+    let driver = r.as_mut().expect("Motor driver must be stored in mutex");
+        
+}
+
 
 async fn vend_success(addr: DispenserAddress, amount:u16) {
     //For now we assume we're using cashless, but we need to be smart and handle coin stuff one day

@@ -56,7 +56,9 @@ endpoints! {
     | Vend                    | VendCommand      | VendResult           | "/vmc/vend"          | //Vend the item
     | ForceDispense           | VendCommand      | VendResult           | "/vmc/forcedispense" | //NB THIS DOES NOT CHARGE THE USER
     | CancelVend              | ()               | VendResult           | "/vmc/cancelvend"    | //Cancel a vend that is in progress
-
+    | CollectPaymentOnly      | VendCommand      | VendResult           | "/vmc/collectpayment"| //Bill for 'an item', but don't dispense anything.
+                                                                                                 //We use this to allow people to pay for something else eg filament/club mate
+                                                                                                 
     //There will be other ones so you can find out about the peripherals etc
 }
 
