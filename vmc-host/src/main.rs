@@ -217,6 +217,8 @@ impl App {
                 if !matches!(self.state, AppState::Idle) {
                     if self.seconds_since_last_event == APP_TIMEOUT_SECONDS {
                         println!("Timeout - return to idle state");
+                        self.row_selected = None;
+                        self.col_selected = None;
                         self.state = AppState::Idle;
                         self.seconds_since_last_event = 0;
                         self.update_ui();
