@@ -106,7 +106,7 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
                     Some(StockItem { 
                         row,
                         col,
-                        name: String::from("M&M Peanut"),
+                        name: String::from("M&amp;M Peanut"),
                         image_url: String::from("images/tangycheesedoritos.jpg"),
                         price: 100,
                     })
