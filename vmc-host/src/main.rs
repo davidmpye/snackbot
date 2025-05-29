@@ -332,6 +332,8 @@ impl App {
                     Event::VmcEvent(VmcResponse::VendResponse(response)) => match response {
                         Ok(_) => {
                             println!("Error - should not have received vend success here");
+                            self.row_selected = None;
+                            self.col_selected = None;
                             self.state = AppState::VendSuccess;
                         }
                         Err(e) => {
