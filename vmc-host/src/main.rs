@@ -352,10 +352,16 @@ impl App {
                         Ok(_) => {
                             println!("Dispense success");
                             self.state = AppState::VendSuccess;
+                            //Clear the selected item
+                            self.row_selected = None;
+                            self.col_selected = None;
                         }
                         Err(e) => {
                             println!("Vend failed - {:?}", e);
                             self.state = AppState::VendFailed;
+                            //Clear the selected item
+                            self.row_selected = None;
+                            self.col_selected = None;
                         }
                     },
                     _ => {
