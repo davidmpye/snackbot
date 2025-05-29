@@ -111,7 +111,16 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
                         price: 100,
                     })
                 },
-               '3' => {
+                '3' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Reeses Cups"),
+                        image_url: String::from("images/peanut_butter_cups.jpg"),
+                        price: 119,
+                    })
+                },
+               '4' => {
                     Some(StockItem { 
                         row,
                         col,
@@ -120,15 +129,6 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
                         price: 139,
                     })
                 },
-                '4' => {
-                    Some(StockItem { 
-                        row,
-                        col,
-                        name: String::from("Reeses Cups"),
-                        image_url: String::from("images/peanut_butter_cups.jpg"),
-                        price: 119,
-                    })
-                }
                 '5' => {
                     Some(StockItem { 
                         row,
