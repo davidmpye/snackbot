@@ -7,34 +7,39 @@ use postcard_rpc::server::{
     impls::embassy_usb_v0_4::EUsbWireTx,
     Sender};
 
-use embassy_rp::peripherals::USB;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::channel::Channel;
+use embassy_sync::signal::Signal;
 
 use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
 
 use crate::MDB_DRIVER;
 use crate::Context;
 
-static TASK_COMMAND_CHANNEL: Channel<ThreadModeRawMutex, CoinAcceptorDriverCommand, 2> =
-    Channel::new();
+
+
+pub static COIN_COMMAND_SIGNAL: Signal<ThreadModeRawMutex, CoinCommand> =
+    Signal::new();
+pub static COIN_RESPONSE_SIGNAL: Signal<ThreadModeRawMutex, CoinResponse> =
+    Signal::new();
+    
 
 const COIN_ACCEPTOR_INIT_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 const COIN_ACCEPTOR_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-pub enum CoinAcceptorDriverCommand {
+pub enum CoinCommand {
     Enable,
     Disable,
 }
 
+pub enum CoinResponse {
+
+}
 //Task will:
 //Init the coin acceptor, or keep retrying every ten seconds
 //Poll the coin acceptor every 100mS
 //If it fails to repond to a poll, it will get reinitialised
 #[embassy_executor::task]
-pub async fn coin_acceptor_task(
-    postcard_sender: Sender<EUsbWireTx<ThreadModeRawMutex, UsbDriver<'static, USB>>>,
-) {
+pub async fn coin_acceptor_task() -> ! {
     loop {
         let a = {
             let mut b = MDB_DRIVER.lock().await;

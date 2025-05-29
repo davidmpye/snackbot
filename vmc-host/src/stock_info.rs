@@ -18,17 +18,17 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
                         row,
                         col,
                         name: String::from("Scampi Fries"),
-                        image_url: String::from("images/scampi.jpg"),
-                        price: 90,
+                        image_url: String::from("images/scampi_fries.jpg"),
+                        price: 95,
                     })
                 },
                 '2' => {
                     Some(StockItem { 
                         row,
                         col,
-                        name: String::from("Bacon Fries"),
-                        image_url: String::from("images/baconfries.jpg"),
-                        price: 90,
+                        name: String::from("Chilli Peanuts"),
+                        image_url: String::from("images/chilli_peanuts.jpg"),
+                        price: 125,
                     })
                 },
                 '4' => {
@@ -37,16 +37,7 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
                         col,
                         name: String::from("Crinklies"),
                         image_url: String::from("images/crinklies.jpg"),
-                        price: 100,
-                    })
-                },
-                '6' => {
-                    Some(StockItem { 
-                         row,
-                        col,
-                        name: String::from("Monster Munch"),
-                        image_url: String::from("images/monstermunch.jpg"),
-                        price: 100,
+                        price: 125,
                     })
                 },
                 _ => None,
@@ -59,8 +50,8 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
                         row,
                         col,
                         name: String::from("Tangy Cheese Doritos"),
-                        image_url: String::from("images/tangycheesedoritos.jpg"),
-                        price: 100,
+                        image_url: String::from("images/doritos_cheese.jpg"),
+                        price: 115,
                     })
                 },
                 '2' => {
@@ -68,8 +59,8 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
                         row,
                         col,
                         name: String::from("Chilli Doritos"),
-                        image_url: String::from("images/chilliheatwavedoritos.jpg"),
-                        price: 100,
+                        image_url: String::from("images/doritos_heatwave.jpg"),
+                        price: 115,
                     })
                 },
                 '4' => {
@@ -93,15 +84,79 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
         }
         'C' => {
             match col {
-                '3' => {
+                '0' => {
                     Some(StockItem { 
                         row,
                         col,
-                        name: String::from("Reeses\nCups"),
-                        image_url: String::from("images/chilliheatwavedoritos.jpg"),
+                        name: String::from("Kitkat\nPeanut Butter"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 75,
+                    })
+                },
+               '1' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("EatNatural\nBar"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 115,
+                    })
+                },
+               '2' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("M&M Peanut"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
                         price: 100,
                     })
                 },
+               '3' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Reeses\nNutrageous"),
+                        image_url: String::from("images/nutrageous.jpg"),
+                        price: 139,
+                    })
+                },
+                '4' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Reeses Cups"),
+                        image_url: String::from("images/peanut_butter_cups.jpg"),
+                        price: 119,
+                    })
+                }
+                '5' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Maltesers"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 75,
+                    })
+                },
+                '6' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Snickers"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 75,
+                    })
+                },
+                '7' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Crunchie"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 89,
+                    })
+                },
+
                 _ => None,
             }
         }
