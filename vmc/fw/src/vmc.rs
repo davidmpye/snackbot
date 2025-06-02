@@ -1,7 +1,7 @@
 use embassy_time::{Duration, Timer, with_timeout};
 use postcard_rpc::header::VarHeader;
 
-use vmc_icd::{Vend, VendCommand, VendError, VendResult, VendProgress, VendProgressTopic};
+use vmc_icd::{Vend, VendCommand, VendError, VendResult, VendProgress, VendProgressTopic, ItemAvailable, ForceDispense};
 
 use crate::motor_driver::DispenserAddress;
 
@@ -164,14 +164,14 @@ pub async fn force_dispense_handler(
         Some(dispenser) => {       
             //NB we are *skipping* the prevend checks
             let dispense_result = driver.dispense(dispenser, true).await;                
-            match sender.reply::<Vend>(header.seq_no, &dispense_result).await {
+            match sender.reply::<ForceDispense>(header.seq_no, &dispense_result).await {
                 Ok(_) => debug!("Vend dispense reply sent OK"),
                 Err(_) => error!("Vend dispense reply did not send"),
             }
         }
         None => {
             //There is no dispenser at this address - you've asked for an invalid address
-            match sender.reply::<Vend>(header.seq_no, &Err(VendError::InvalidAddress)).await {
+            match sender.reply::<ForceDispense>(header.seq_no, &Err(VendError::InvalidAddress)).await {
                 Ok(_) => debug!("Invalid address reply sent OK"),
                 Err(_) => error!("Invalid address reply did not send")
             }
@@ -190,6 +190,19 @@ pub async fn item_available_handler(
     let mut r = DISPENSER_DRIVER.lock().await;
     let driver = r.as_mut().expect("Motor driver must be stored in mutex");
         
+            
+    match driver.get_dispenser(DispenserAddress { row: cmd.row as char, col:cmd.col as char}).await {
+        Some(dispenser) => match sender.reply::<ItemAvailable>(header.seq_no, &driver.is_dispensable(dispenser)).await {
+            Ok(_) => debug!("Vend dispense reply sent OK"),
+            Err(_) => error!("Vend dispense reply did not send"),
+        }
+        None => {
+            match sender.reply::<ItemAvailable>(header.seq_no, &Err(VendError::InvalidAddress)).await {
+                Ok(_) => debug!("Invalid address reply sent OK"),
+                Err(_) => error!("Invalid address reply did not send")
+            }
+        }
+    }
 }
 
 

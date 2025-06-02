@@ -64,24 +64,14 @@ pub async fn coin_acceptor_task() -> ! {
                     }
                 }
                 //Handle any incoming requests and send those messages to the coin acceptor.
-                match TASK_COMMAND_CHANNEL.try_receive() {
-                    Ok(msg) => {
+                match COIN_COMMAND_SIGNAL.try_take() {
+                    Some(msg) =>
+                    {
                         let mut b = MDB_DRIVER.lock().await;
                         let bus = b.as_mut().expect("MDB driver not present");
-                        match msg {
-                            CoinAcceptorDriverCommand::Enable => {
-                                debug!("Sending coin acceptor enable command");
-                                let _ = acceptor.enable_coins(bus, 0xFFFFu16).await;
-                            }
-                            CoinAcceptorDriverCommand::Disable => {
-                                debug!("Sending coin acceptor disable command");
-                                let _ = acceptor.enable_coins(bus, 0x00u16).await;
-                            }
-                        }
+                        //FIXME
                     }
-                    Err(_e) => {
-                    //    error!("Task Command Channel rx error");
-                    }
+                    None => {}
                 }
             },
             None => {
