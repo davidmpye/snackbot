@@ -65,9 +65,14 @@ pub async fn cashless_device_task() -> ! {
                         //Unlock the bus, do the poll
                         let mut b = MDB_DRIVER.lock().await;
                         let bus = b.as_mut().expect("MDB driver not present");
-                        device.poll(bus).await
+                        match device.poll(bus).await {
+                            Ok(events) => events,
+                            Err(()) => {
+                                error!("Poll event error - reinitialising device");
+                                break 'main;
+                            },
+                        }
                     };
-
 
                     for event in poll_events {
                         if let Some(e) = event {
