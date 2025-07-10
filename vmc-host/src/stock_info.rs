@@ -40,6 +40,15 @@ pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
                         price: 125,
                     })
                 },
+                '6' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Chipsticks"),
+                        image_url: String::from("images/chipsticks.jpg"),
+                        price: 125,
+                    })
+                },
                 _ => None,
             }
         }
