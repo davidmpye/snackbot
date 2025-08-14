@@ -15,4 +15,23 @@ impl MakeSelectionBox {
     pub fn new() -> Self {
         Object::builder().build()
     }
+
+    pub fn set_row(&self, row: Option<char>) {
+        let char = match row {
+            Some(c) => c,
+            None => '_'
+        };
+        let i = imp::MakeSelectionBox::from_obj(self);
+        i.row.set_label(&format!("<span font=\"Arial Rounded MT 80\">{}</span>", char));
+    }
+
+    pub fn set_col(&self, row: Option<char>) {
+        let char = match row {
+            Some(c) => c,
+            None => '_'
+        };
+        let i = imp::MakeSelectionBox::from_obj(self);
+        i.col.set_label(&format!("<span font=\"Arial Rounded MT 80\">{}</span>", char));
+    }
+
 }

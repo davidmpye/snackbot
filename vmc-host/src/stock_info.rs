@@ -1,190 +1,234 @@
 use std::path::PathBuf;
-use crate::DispenserAddress;
 pub struct StockItem {
-    pub address: DispenserAddress,
+    pub row: char,
+    pub col: char,
     pub name: String,
     pub image_url: String,
     pub price: u16,
 }
 
-pub fn get_stock_item(address: DispenserAddress) -> Option<StockItem> {
-    match address {
-        DispenserAddress{row:'A',col:'0'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Scampi Fries"),
-                image_url: String::from("images/scampi.jpg"),
-                price: 90,
-            })
-        },
-        DispenserAddress{row:'A',col:'2'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Bacon Fries"),
-                image_url: String::from("images/baconfries.jpg"),
-                price: 90,
-            })
-        },
-        DispenserAddress{row:'A',col:'4'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Crinklies"),
-                image_url: String::from("images/crinklies.jpg"),
-                price: 100,
-            })
-        },        
-        DispenserAddress{row:'A',col:'6'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Monster Munch"),
-                image_url: String::from("images/monstermunch.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'B',col:'0'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Tangy Cheese Doritos"),
-                image_url: String::from("images/tangycheesedoritos.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'B',col:'2'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Chilli Doritos"),
-                image_url: String::from("images/chilliheatwavedoritos.jpg"),
-                price: 100,
-            })
-        },        
-        DispenserAddress{row:'B',col:'4'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Soba Noodles"),
-                image_url: String::from("./doritos.jpg"),
-                price: 150,
-            })
-        },        
-        DispenserAddress{row:'B',col:'6'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Super Noodles"),
-                image_url: String::from("./doritos.jpg"),
-                price: 130,
-            })
-        },
-        DispenserAddress{row:'C',col:'0'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Nature Valley Bar"),
-                image_url: String::from("./doritos.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'C',col:'1'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Crunchie"),
-                image_url: String::from("./doritos.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'C',col:'2'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Cadbury's Snack"),
-                image_url: String::from("./doritos.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'C',col:'3'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Reese's Nutrageous"),
-                image_url: String::from("./doritos.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'C',col:'4'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Reeses' Peanut Butter Cups"),
-                image_url: String::from("./doritos.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'C',col:'6'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("M&Ms"),
-                image_url: String::from("./doritos.jpg"),
-                price: 100,
-            })
-        },
-        DispenserAddress{row:'C',col:'7'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Lion Bar"),
-                image_url: String::from("./doritos.jpg"),
-                price: 100,
-            })
-        },
+pub fn get_stock_item(row:char, col:char) -> Option<StockItem> {
+    match row {
+        //Three spirals
 
-        
+        'A' => {
+            match col {
+                '0' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Scampi Fries"),
+                        image_url: String::from("images/scampi_fries.jpg"),
+                        price: 95,
+                    })
+                },
+                '2' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Chilli Peanuts"),
+                        image_url: String::from("images/chilli_peanuts.jpg"),
+                        price: 125,
+                    })
+                },
+                '4' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Crinklies"),
+                        image_url: String::from("images/crinklies.jpg"),
+                        price: 125,
+                    })
+                },
+                '6' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Chipsticks"),
+                        image_url: String::from("images/chipsticks.jpg"),
+                        price: 125,
+                    })
+                },
+                _ => None,
+            }
+        }
+        'B' => {
+            match col {
+                '0' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Tangy Cheese Doritos"),
+                        image_url: String::from("images/doritos_cheese.jpg"),
+                        price: 115,
+                    })
+                },
+                '2' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Chilli Doritos"),
+                        image_url: String::from("images/doritos_heatwave.jpg"),
+                        price: 115,
+                    })
+                },
+                '4' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("Soba Noodles"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 150,
+                    })
+                },
+                '6' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("Super Noodles"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 130,
+                    })
+                },
+                _ => None,
+            }
+        }
+        'C' => {
+            match col {
+                '0' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Kitkat\nPeanut Butter"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 75,
+                    })
+                },
+               '1' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("EatNatural\nBar"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 115,
+                    })
+                },
+               '2' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("M&amp;M Peanut"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 100,
+                    })
+                },
+                '3' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Reeses Cups"),
+                        image_url: String::from("images/peanut_butter_cups.jpg"),
+                        price: 119,
+                    })
+                },
+               '4' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Reeses\nNutrageous"),
+                        image_url: String::from("images/nutrageous.jpg"),
+                        price: 139,
+                    })
+                },
+                '5' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Maltesers"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 75,
+                    })
+                },
+                '6' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Snickers"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 75,
+                    })
+                },
+                '7' => {
+                    Some(StockItem { 
+                        row,
+                        col,
+                        name: String::from("Crunchie"),
+                        image_url: String::from("images/tangycheesedoritos.jpg"),
+                        price: 89,
+                    })
+                },
 
-        DispenserAddress{row:'E',col:'1'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Cream Soda"),
-                image_url: String::from("./doritos.jpg"),
-                price: 90,
-            })
-        },
+                _ => None,
+            }
+        }
+        //Cans
+        'E' => {
+            match col {
+                '1' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("Cream Soda"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 90,
+                    })
+                },
+                '2' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("Dr Pepper"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 90,
+                    })
+                },
 
-        DispenserAddress{row:'E',col:'2'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Doctor Pepper"),
-                image_url: String::from("./doritos.jpg"),
-                price: 90,
-            })
-        },
-        DispenserAddress{row:'E',col:'3'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Diet Coke"),
-                image_url: String::from("./doritos.jpg"),
-                price: 90,
-            })
-        },
-
-        DispenserAddress{row:'F',col:'1'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Fanta Sugar Free"),
-                image_url: String::from("./doritos.jpg"),
-                price: 90,
-            })
-        },
-        DispenserAddress{row:'F',col:'2'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("Irn Bru Sugar Free"),
-                image_url: String::from("./doritos.jpg"),
-                price: 90,
-            })
-        },
-        DispenserAddress{row:'F',col:'3'} => {
-            Some(StockItem { 
-                address,
-                name: String::from("7UP Sugar Free"),
-                image_url: String::from("./doritos.jpg"),
-                price: 90,
-            })
-        },
-
-
-        _ => None,
+                _ => None
+            }
+        }
+        'F' => {
+            match col {
+                '0' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("Diet Coke"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 90,
+                    })
+                },
+                '1' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("Fanta Zero"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 90,
+                    })
+                },
+                '2' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("Irn Bru"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 90,
+                    })
+                },
+                '3' => {
+                    Some(StockItem { 
+                        row,col,
+                        name: String::from("7UP! Free"),
+                        image_url: String::from("./doritos.jpg"),
+                        price: 90,
+                    })
+                },
+                _ => None
+            }
+        }
+        _ => None
     }
-
 }

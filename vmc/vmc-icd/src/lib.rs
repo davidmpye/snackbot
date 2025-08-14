@@ -1,32 +1,65 @@
 #![cfg_attr(not(feature = "use-std"), no_std)]
 use postcard_rpc::{endpoints, topics, TopicDirection};
 
-pub mod dispenser;
-use crate::dispenser::*;
+
 
 pub mod coin_acceptor;
 use crate::coin_acceptor::*;
 
-pub mod cashless_device;
-use crate::cashless_device::*;
 
 pub mod chiller;
 use crate::chiller::*;
+use serde::{Deserialize, Serialize};
+use postcard_schema::Schema;
 
 
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
+pub struct VendCommand {
+    pub row: u8,
+    pub col: u8,
+    pub price: u16,  //Unscaled, GB pence 
+}
+
+//These are the reasons a vend might fail
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
+pub enum VendError {
+    MotorNotPresent,
+    MotorNotHome,
+    MotorStuckHome,
+    MotorStuckNotHome,
+    OneOrNoCansLeft, //Can vendor in my model won't (willingly) vend if only one can present
+    NoDropDetected, 
+    InvalidAddress,
+    Cancelled, 
+    PaymentFailed,
+    CommsFault
+}
+
+pub type VendResult = Result<(), VendError>;
+
+
+//These are sent as topics during the Vend Process to give the UI a chance to update
+//So, when you call Vend, as the VMC progresses through taking payment
+#[derive(Serialize, Deserialize, Schema, Debug, PartialEq,Copy, Clone)]
+pub enum VendProgress {
+    AwaitingPayment,
+    Dispensing,
+    //No need for a Complete, because when the Vend endpoint completes, it will return a VendResult to you
+}
 
 endpoints! {
     list = ENDPOINT_LIST;
     omit_std = true;
-    | EndpointTy              | RequestTy        | ResponseTy           | Path             |
-    | ----------              | ---------        | ----------           | ----             |
-    //Things to operate the motor driver
-    | DispenseEndpoint        | DispenseCommand  | DispenseResult       | "/dispenser/dispense"    |  //Dispenses or force-dispenses an item
-    | DispenserStatusEndpoint | DispenserAddress | DispenserOption      | "/dispenser/status"      |  //Get the status for a given dispenser
-
-    | CoinAcceptorEnableEndpoint | bool          | ()                   | "/mdb/coinacceptor/enable" | //Whether acceptor should accept coins
-
-    | CashlessDeviceCmdEndpoint  | CashlessDeviceCommand | ()    | "/mdb/cashlessdevice/cmd"  | //Commands to the cashless device
+    | EndpointTy              | RequestTy        | ResponseTy           | Path                 |
+    | ----------              | ---------        | ----------           | ----                 |
+    | ItemAvailable           | VendCommand      | VendResult           | "/vmc/itemavailable" | //Test if the item is available to vend?  
+    | Vend                    | VendCommand      | VendResult           | "/vmc/vend"          | //Vend the item
+    | ForceDispense           | VendCommand      | VendResult           | "/vmc/forcedispense" | //NB THIS DOES NOT CHARGE THE USER
+    | CancelVend              | ()               | VendResult           | "/vmc/cancelvend"    | //Cancel a vend that is in progress
+    | CollectPaymentOnly      | VendCommand      | VendResult           | "/vmc/collectpayment"| //Bill for 'an item', but don't dispense anything.
+                                                                                                 //We use this to allow people to pay for something else eg filament/club mate
+                                                                                                 
+    //There will be other ones so you can find out about the peripherals etc
 }
 
 topics! {
@@ -39,10 +72,8 @@ topics! {
 topics! {
     list = TOPICS_OUT_LIST;
     direction = TopicDirection::ToClient;
-    | TopicTy                   | MessageTy             | Path                             | Cfg                           |
-    | -------                   | ---------             | ----                             | ---                           |
-    | CoinInsertedTopic         | CoinInserted          | "/mdb/coinacceptor/coininserted" |                               |
-    | EventTopic                | CoinAcceptorEvent     | "/mdb/coinacceptor/event"        |                               |
-    //An event from the cashless device
-    | CashlessEventTopic        | CashlessDeviceEvent   | "/mdb/cashless/event"            |                               |
+    | TopicTy              | MessageTy             | Path                             | Cfg                           |
+    | -------              | ---------             | ----                             | ---                           |  
+    | ChillerTopic         | ChillerStatus         | "/vmc/status/chiller"            |                               | 
+    | VendProgressTopic    | VendProgress          | "/vmc/vend_progress"             |                               |
 }
