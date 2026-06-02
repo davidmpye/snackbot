@@ -1,3 +1,6 @@
+use std::path::Path;
+
+
 mod stock_info;
 use crate::stock_info::get_stock_item;
 
@@ -413,11 +416,24 @@ impl App {
                 ));
             }
             AppState::AwaitingConfirmation => {
-                match get_stock_item(self.row_selected.unwrap(), self.col_selected.unwrap()) {
+		let row = self.row_selected.unwrap();
+		let col = self.col_selected.unwrap();
+                match get_stock_item(row, col) {
                     Some(item) => {
                         self.confirm_item_box.set_name(item.name);
-                        self.confirm_item_box.set_image(item.image_url);
-                        self.confirm_item_box.set_price(item.price);
+			
+			let custom_image_path = format!("images/{row}{col}.jpg");
+			let fallback_image_path = String::from("images/notfound.png");
+
+			let image = if Path::new(&custom_image_path).exists() {
+				custom_image_path
+			}
+			else {
+				fallback_image_path
+			};
+
+                        self.confirm_item_box.set_image(image);
+			self.confirm_item_box.set_price(item.price);
                         self.stack.set_visible_child(
                             &self
                                 .stack
