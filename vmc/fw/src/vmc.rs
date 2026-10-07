@@ -78,6 +78,10 @@ pub async fn vend_handler(
                             },
                             Err (e) => {
                                 debug!("Payment failed");
+                                //Send a Cancel Transaction to make sure that the cardreader isn't still trying
+                                //to process the payment, in which case it might succeed in taking payment *after*
+                                //we have timed out
+                                CASHLESS_COMMAND_SIGNAL.signal(CashlessDeviceCommand::CancelTransaction);
                                 match sender.reply::<Vend>(header.seq_no, &Err(VendError::PaymentFailed)).await {
                                     Ok(_) => debug!("Payment reply sent OK"),
                                     Err(_) => error!("Payment reply did not send")
