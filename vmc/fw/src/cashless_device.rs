@@ -178,8 +178,10 @@ pub(crate) async fn cashless_handler(
             //Device not initialised (or absent) - try to init it
             *maybe_device = CashlessDevice::init(bus).await;
             match maybe_device {
-                Some(_dev) => {
-                    info!("Initialised cashless device successfully");
+                Some(device) => {
+                    info!("Cashless device initialised");
+                    //Set the device as enabled so we can use it
+                    let _ = device.set_device_enabled(bus, true).await;
                 }
                 None => {
                     CASHLESS_RESPONSE_SIGNAL.signal(CashlessDeviceResponse::Unavailable);
