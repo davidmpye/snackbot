@@ -12,10 +12,9 @@ use embassy_sync::signal::Signal;
 
 use mdb_async::coin_acceptor::{CoinAcceptor, PollEvent};
 
-use crate::MDB_DRIVER;
 use crate::Context;
 
-
+/* 
 
 pub static COIN_COMMAND_SIGNAL: Signal<ThreadModeRawMutex, CoinCommand> =
     Signal::new();
@@ -126,3 +125,4 @@ pub async fn coinacceptor_process_poll_events(
     //};
     //TASK_COMMAND_CHANNEL.send(message).await;
 //}
+*/

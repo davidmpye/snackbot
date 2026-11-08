@@ -53,9 +53,11 @@ mod motor_driver;
 mod usb_device_handler;
 mod vmc;
 mod watchdog;
+mod mdb;
 
-use cashless_device::cashless_device_task;
-use coin_acceptor::coin_acceptor_task; //set_coin_acceptor_enabled};
+use mdb::mdb_task;
+
+//use coin_acceptor::coin_acceptor_task; //set_coin_acceptor_enabled};
 
 use motor_driver::{motor_driver_dispenser_status, MotorDriver};
 use usb_device_handler::usb_task;
@@ -146,7 +148,6 @@ assign_resources! {
     }
 }
 
-static MDB_DRIVER: Mutex<CriticalSectionRawMutex, Option<Mdb<PioUart<0>>>> = Mutex::new(None);
 static DISPENSER_DRIVER: Mutex<CriticalSectionRawMutex, Option<MotorDriver>> = Mutex::new(None);
 
 #[embassy_executor::main]
@@ -228,25 +229,15 @@ async fn main(spawner: Spawner) {
 
     //Set up Multi-Drop-Bus
     debug!("Initialising MDB peripheral");
-    let mdb = Mdb::new(uart);
-    {
-        //Place the MDB device into the mutex
-        let mut m = MDB_DRIVER.lock().await;
-        *m = Some(mdb);
-    }
+    let mdb: Mdb<PioUart<'_, 0>> = Mdb::new(uart);
+    //Spawn the MDB bus task.
+    debug!("Spawning MDB task");
+    spawner.must_spawn(mdb_task(mdb));
 
     // Build the builder - USB device will be run by usb_task
     debug!("Spawning USB device task");
     let usb = builder.build();
     spawner.must_spawn(usb_task(usb));
-
-    //Spawn the coin acceptor poll task
-    debug!("Spawning coin acceptor poll task");
-    spawner.must_spawn(coin_acceptor_task());
-
-    //Spawn the cashless device poll task
-    debug!("Spawning cashless device poll task");
-    spawner.must_spawn(cashless_device_task());
 
     debug!("Entering Postcard-RPC main loop");
     //Postcard server mainloop runs here
