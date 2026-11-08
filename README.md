@@ -73,8 +73,7 @@ The VMC firmware runs a set of Embassy tasks:
 
 - **Motor driver** – drives the dispenser motor matrix via an 8-bit data bus
   plus three clock lines, OE and CLR (GPIO 0–12). Detects home position,
-  stuck motors, "one or no cans left" on the can vendor, and whether a drop
-  was detected.
+  stuck motors, and "one or no cans left" on the can vendor.
 - **MDB (Multi-Drop Bus)** – the 9-bit serial bus used by vending peripherals,
   implemented with a PIO-backed 9-bit UART on GPIO 20/21. Two poll tasks handle
   the **coin acceptor** and a **cashless (card) device**.
