@@ -1,4 +1,6 @@
 mod stock_info;
+use std::any::Any;
+
 use crate::stock_info::get_stock_item;
 
 mod make_selection_box;
@@ -11,7 +13,8 @@ use crate::make_payment_box::MakePaymentBox;
 mod make_another_selection_box;
 use crate::make_another_selection_box::MakeAnotherSelectionBox;
 
-
+mod message_generator;
+use crate::message_generator::MessageGenerator;
 
 mod vend_in_progress_box;
 use vend_in_progress_box::VendInProgressBox;
@@ -37,9 +40,6 @@ const APP_ID: &str = "uk.org.makerspace.snackbot";
 
 const KEYBOARD_DEVICE_NAME: &str = "matrix-keyboard";
 const VMC_DEVICE_NAME: &str = "vmc";
-
-const IDLE_MESSAGE_L1: &str = "Plz buy m0ar";
-const IDLE_MESSAGE_L2: &str = "snackz kthx";
 
 const PAY_MESSAGE_L1: &str = "Please pay:";
 
@@ -120,6 +120,7 @@ enum AppState {
 }
 
 struct App {
+    pub message_generator: MessageGenerator,
     pub state: AppState,
     pub credit: u16,
     pub amount_due: u16,
@@ -182,9 +183,12 @@ impl App {
 
         window.present();
 
+        let message_generator = MessageGenerator::new();
+        //Get a random welcome message.
+        let (message_l1, message_l2) = message_generator.get_welcome_message();
         let _ = lcd_channel.send_blocking(LcdCommand::SetText(
-            String::from(IDLE_MESSAGE_L1),
-            String::from(IDLE_MESSAGE_L2),
+            String::from(message_l1),
+            String::from(message_l2),
         ));
 
         Self {
@@ -206,6 +210,8 @@ impl App {
             event_channel_tx,
 
             seconds_since_last_event: 0,
+
+            message_generator,
         }
     }
 
@@ -390,9 +396,11 @@ impl App {
         //Display appropriate state
         match self.state {
             AppState::Idle => {
+                //Display idle message
+                let (msg_l1, msg_l2) = self.message_generator.get_welcome_message();
                 let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(
-                    String::from(IDLE_MESSAGE_L1),
-                    String::from(IDLE_MESSAGE_L2),
+                    String::from(msg_l1),
+                    String::from(msg_l2),
                 ));
 
                 //In this state, we should be showing the select item widgetstack 'page'
@@ -405,12 +413,6 @@ impl App {
 
                 self.make_selection_box.set_row(self.row_selected);
                 self.make_selection_box.set_col(self.col_selected);
-                
-                //Display idle message
-                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(
-                    String::from(IDLE_MESSAGE_L1),
-                    String::from(IDLE_MESSAGE_L2),
-                ));
             }
             AppState::AwaitingConfirmation => {
                 match get_stock_item(self.row_selected.unwrap(), self.col_selected.unwrap()) {
@@ -479,9 +481,17 @@ impl App {
                         .child_by_name("vend_ok_box")
                         .expect("Vendsuccess missing from stack"),
                 );
-                //Queue a message to leave this state after 3 seconds
+
+                //Display a thank you message
+                let (message_l1, message_l2) = self.message_generator.get_thankyou_message();
+                let _ = self.lcd_channel.send_blocking(LcdCommand::SetText(
+                    String::from(message_l1),
+                    String::from(message_l2),
+                ));
+
+                //Queue a message to leave this state after 5 seconds
                 let ch = self.event_channel_tx.clone();
-                glib::timeout_add_seconds(2, move || {
+                glib::timeout_add_seconds(5, move || {
                     let _ = ch.send_blocking(Event::ChangeState(AppState::Idle));
                     glib::ControlFlow::Break
                 });
