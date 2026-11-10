@@ -55,11 +55,11 @@ impl MessageGenerator {
 }
 
 
-fn reformat_message(msg: &str)  -> (&str, &str) {
+pub(crate) fn reformat_message(msg: &str)  -> (&str, &str) {
     if let Some((first, second)) = msg.split_once('\n') {
         (first.trim(), second.trim())
     }
     else {
-        (msg, "")
+        (msg.trim(), "")
     }
 }

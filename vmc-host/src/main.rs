@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 mod stock_info;
 use std::any::Any;
 
