@@ -60,6 +60,6 @@ pub(crate) fn reformat_message(msg: &str)  -> (&str, &str) {
         (first.trim(), second.trim())
     }
     else {
-        (msg, "")
+        (msg.trim(), "")
     }
 }
