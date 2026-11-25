@@ -421,7 +421,7 @@ impl App {
                 match get_stock_item(self.row_selected.unwrap(), self.col_selected.unwrap()) {
                     Some(item) => {
                         self.confirm_item_box.set_name(item.name);
-                        self.confirm_item_box.set_image(item.image_url);
+                        self.confirm_item_box.set_image(format!("images/{}{}.jpg", self.row_selected.unwrap(), self.col_selected.unwrap()));
                         self.confirm_item_box.set_price(item.price);
                         self.stack.set_visible_child(
                             &self
