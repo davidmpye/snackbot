@@ -1,13 +1,13 @@
 [package]
 name = "keyboard-icd"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-heapless = "0.9.3"
-postcard = "1.1.3"
-postcard-rpc = "0.12.1"
-postcard-schema = { version = "0.2.5", features = ["heapless-v0_9"] }
+heapless = "0.9.4"
+postcard = { version = "1.2.0", default-features = false, features = ["heapless-v0_9", "defmt"] }
+postcard-rpc = { version = "0.12.1", default-features = false, path = "/tmp/postcard-rpc/source/postcard-rpc" }
+postcard-schema = { version = "0.2.6", default-features = false, features = ["heapless-v0_9"] }
 
 [dependencies.serde]
 version = "1.0"
