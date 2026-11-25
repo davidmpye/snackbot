@@ -1,8 +1,9 @@
 #![cfg_attr(not(feature = "use-std"), no_std)]
 
 use postcard_rpc::{endpoints, topics, TopicDirection};
+use heapless::String;
 
-pub type DisplayText =  [[u8;32];2];
+pub type DisplayText =  String<256>;
 
 endpoints! {
     list = ENDPOINT_LIST;

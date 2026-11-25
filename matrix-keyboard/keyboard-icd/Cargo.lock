@@ -81,6 +81,7 @@ dependencies = [
 name = "keyboard-icd"
 version = "0.1.0"
 dependencies = [
+ "heapless 0.8.0",
  "postcard-rpc",
  "postcard-schema",
  "serde",
@@ -143,6 +144,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7532d2f032349d41dc760c9fe5247fcb5660c689caf4884822603983a5a9a66"
 dependencies = [
+ "heapless 0.8.0",
  "postcard-derive",
  "serde",
 ]
