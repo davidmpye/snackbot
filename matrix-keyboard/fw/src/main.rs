@@ -1,9 +1,10 @@
 #![no_std]
 #![no_main]
-use defmt::*;
+use defmt::{info, warn, error, panic};
+use embedded_hal_1::delay::DelayNs;
+use embedded_hal_1::i2c::I2c;
 
 use core::sync::atomic::{AtomicBool, Ordering};
-use fixedstr::str32;
 use core::unreachable;
 use static_cell::{ConstStaticCell, StaticCell};
 
@@ -24,13 +25,14 @@ use embassy_rp::i2c::{self, Config, InterruptHandler};
 use embassy_rp::peripherals::{I2C0, PIN_16, PIN_17, USB};
 use embassy_rp::usb;
 use embassy_rp::usb::{Driver as UsbDriver, InterruptHandler as UsbInterruptHandler};
-
+use embassy_futures::select::{select, Either};
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
 use lcd_lcm1602_i2c::sync_lcd::Lcd;
 
+use heapless::String;
 //NB if we use second core, this mutex is not suitable
-static DISPLAY_TEXT: Signal<ThreadModeRawMutex, [[u8; 32];2]> = Signal::new();
+static DISPLAY_TEXT: Signal<ThreadModeRawMutex, String<256>> = Signal::new();
 static BACKLIGHT_SETTING: Signal<ThreadModeRawMutex, bool> = Signal::new();
 static LCD_ROW_LENGTH: usize = 16;
 
@@ -237,17 +239,10 @@ fn set_backlight(_context: &mut Context, _header: VarHeader, rqst: bool) {
     BACKLIGHT_SETTING.signal(rqst);
 }
 
-fn set_text(_context: &mut Context, _header: VarHeader, rqst: [[u8; 32];2]) {
+fn set_text(_context: &mut Context, _header: VarHeader, rqst: String<256>) {
     DISPLAY_TEXT.signal(rqst);
 }
 
-
-struct DisplayLine {
-    text: str32,
-    changed : bool,
-    scrolling: bool,
-    scroll_index: usize,
-}
 
 #[embassy_executor::task]
 async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
@@ -266,73 +261,71 @@ async fn i2c_task(interface: I2C0, scl: PIN_17, sda: PIN_16) {
         let _ = lcd.backlight(lcd_lcm1602_i2c::Backlight::On);
         let _ = lcd.clear();
 
-        //Initial display message
-        let mut display_lines = [
-            DisplayLine {
-                text: str32::from("    SnackBot"),
-                changed: true,
-                scrolling: false,
-                scroll_index:0,
-
-            },
-            DisplayLine {
-                text: str32::from("Initializing..."),
-                changed: true,
-                scrolling: false,
-                scroll_index:0,
-            },
-        ];
-
+        
         loop {
-            //if backlight setting has changed, apply it.
-            if let Some(res) = BACKLIGHT_SETTING.try_take() {
-                let _ = match res {
-                    true => lcd.backlight(lcd_lcm1602_i2c::Backlight::On),
-                    false => lcd.backlight(lcd_lcm1602_i2c::Backlight::Off),
-                };
-            }
-
-            if let Some(line) = DISPLAY_TEXT.try_take() {
-                //Update the display lines
-                for (display_line, new_line) in core::iter::zip(display_lines.iter_mut(), line.iter()) {
-                    let t = if let Ok(text) = core::str::from_utf8(new_line) {
-                        text.trim_end()
-                    } else {
-                        "Invalid ASCII"
-                    };
-
-                    display_line.text = str32::from(t);
-                    display_line.changed = true;
-                    display_line.scroll_index = 0;
-                    //if line longer than LCD_ROW_LENGTH chars, it'll need to scroll
-                    display_line.scrolling = t.len() > LCD_ROW_LENGTH;
-                }
-            }
-
-            for (row, line) in display_lines.iter_mut().enumerate() {
-                if line.changed || line.scrolling {
-                    let _ = lcd.set_cursor(row as u8, 0);
-                    let _ = lcd.write_str("                ");
-                    let _ = lcd.set_cursor(row as u8, 0);
-                    let _ = lcd.write_str(&line.text.as_str()[line.scroll_index..]);
-                    line.changed = false;
-                }
-                //If line needs to be scrolled, scroll it.
-                if line.scrolling {
-                    if line.scroll_index == line.text.len() {
-                        line.scroll_index = 0;
-                    }
-                    else {
-                        line.scroll_index +=1;
-                    }
-                }
-                Timer::after(Duration::from_millis(250)).await;
+            match select(BACKLIGHT_SETTING.wait(), DISPLAY_TEXT.wait()).await {
+                Either::First(backlight)=> {
+                    let _ = lcd.backlight( 
+                        if (backlight) {lcd_lcm1602_i2c::Backlight::On} else {lcd_lcm1602_i2c::Backlight::Off}
+                    );
+                },
+                Either::Second(text)=> {
+                    display_text(text, &mut lcd).await;
+                },
             }
         }
-
     } else {
         warn!("Unable to locate I2C LCD at address 0x27");
     }
+}
+
+async fn display_text<I: I2c, D: DelayNs>(text: String<256>, lcd: &mut Lcd<'_, I, D>) {
+    //If there are multiple lines, these will be vertically scrolled across the display
+    //and the display will be cleared at the end.
+    let scroll_interval = Duration::from_secs(1);
+    let blank_interval = Duration::from_secs(5);
+
+    let mut last_line: Option<&str> = None;
+    let mut row = 0u8;
+
+    let _ = lcd.clear();
+
+    let lines = text.split('\n');
+    for line in lines {
+        match row {
+            0 => {
+                // First line: top row
+                let _ = lcd.set_cursor(0, 0);
+                let _ = lcd.write_str(line);
+                row = 1;
+            }
+            1 => {
+                // Second line: bottom row, no scrolling
+                let _ = lcd.set_cursor(1, 0);
+                let _ = lcd.write_str(line);
+                last_line = Some(line);
+                row = 2;
+            }
+            _ => {
+                // Scroll previous bottom line up, write new line below
+                Timer::after(scroll_interval).await;
+                let _ = lcd.clear();
+
+                if let Some(previous) = last_line {
+                    let _ = lcd.set_cursor(0, 0);
+                    let _ = lcd.write_str(previous);
+                }
+
+                let _ = lcd.set_cursor(1, 0);
+                let _ = lcd.write_str(line);
+
+                last_line = Some(line);
+            }
+        }
+    }
+
+    Timer::after(blank_interval).await;
+
 }
 
 #[embassy_executor::task]

@@ -44,6 +44,8 @@ postcard = "1.1.1"
 postcard-schema = "0.2.0"
 keyboard-icd = {version = "0.1.0", path="../keyboard-icd" }
 fixedstr = { version = "0.5.8", features = ["no-alloc"] }
+heapless = { version = "0.8", features = ["serde"] }
+embassy-futures = "0.1.2"
 
 
 [profile.release]

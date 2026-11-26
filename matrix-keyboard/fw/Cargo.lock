@@ -371,9 +371,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-futures"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f878075b9794c1e4ac788c95b728f26aa6366d32eeb10c7051389f898f7d067"
+checksum = "dc2d050bdc5c21e0862a89256ed8029ae6c290a93aecefc73084b3002cdebb01"
 
 [[package]]
 name = "embassy-hal-internal"
@@ -798,6 +798,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
 dependencies = [
  "hash32 0.3.1",
+ "serde",
  "stable_deref_trait",
 ]
 
@@ -847,6 +848,7 @@ dependencies = [
 name = "keyboard-icd"
 version = "0.1.0"
 dependencies = [
+ "heapless 0.8.0",
  "postcard-rpc",
  "postcard-schema",
  "serde",
@@ -1161,6 +1163,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7532d2f032349d41dc760c9fe5247fcb5660c689caf4884822603983a5a9a66"
 dependencies = [
+ "heapless 0.8.0",
  "postcard-derive",
  "serde",
 ]
@@ -1418,6 +1421,7 @@ dependencies = [
  "defmt",
  "defmt-rtt",
  "embassy-executor",
+ "embassy-futures",
  "embassy-rp",
  "embassy-sync",
  "embassy-time",
@@ -1431,6 +1435,7 @@ dependencies = [
  "fixed",
  "fixed-macro",
  "fixedstr",
+ "heapless 0.8.0",
  "keyboard-icd",
  "lcd-lcm1602-i2c",
  "log",
